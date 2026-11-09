@@ -1,0 +1,2848 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f6f1e8">
+<title>Dissect — a hinged dissection puzzle</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f6f5c'/%3E%3Cpath d='M16 5 27 13.5 23 27 9 27 5 13.5Z' fill='%23f0b429'/%3E%3Cpath d='M16 5 16 27 9 27 5 13.5Z' fill='%23e2725b'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f1e8;
+    --bg-glow: #efe4d2;
+    --ink: #1c2421;
+    --muted: #6d746c;
+    --line: rgba(28, 36, 33, .12);
+    --card: rgba(255, 253, 248, .82);
+    --card-strong: rgba(255, 253, 248, .96);
+    --accent: #1f6f5c;
+    --accent-soft: rgba(31, 111, 92, .12);
+    --accent-ink: #ffffff;
+    --warn: #b3543a;
+    --shadow: 0 12px 34px rgba(35, 45, 40, .14), 0 2px 6px rgba(35, 45, 40, .08);
+    --radius: 18px;
+    --sans: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #11161a;
+      --bg-glow: #1a2320;
+      --ink: #edf2ee;
+      --muted: #9aa49d;
+      --line: rgba(237, 242, 238, .14);
+      --card: rgba(22, 29, 34, .8);
+      --card-strong: rgba(24, 32, 38, .96);
+      --accent: #63c3a8;
+      --accent-soft: rgba(99, 195, 168, .16);
+      --accent-ink: #0a1512;
+      --warn: #e08b72;
+      --shadow: 0 14px 38px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .4);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #11161a;
+    --bg-glow: #1a2320;
+    --ink: #edf2ee;
+    --muted: #9aa49d;
+    --line: rgba(237, 242, 238, .14);
+    --card: rgba(22, 29, 34, .8);
+    --card-strong: rgba(24, 32, 38, .96);
+    --accent: #63c3a8;
+    --accent-soft: rgba(99, 195, 168, .16);
+    --accent-ink: #0a1512;
+    --warn: #e08b72;
+    --shadow: 0 14px 38px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .4);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; overflow: hidden; overscroll-behavior: none;
+    color: var(--ink); font-family: var(--sans);
+    background:
+      radial-gradient(1100px 720px at 50% -12%, var(--bg-glow), transparent 68%),
+      radial-gradient(900px 600px at 110% 110%, var(--accent-soft), transparent 60%),
+      var(--bg);
+    -webkit-user-select: none; user-select: none;
+  }
+  #board { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+
+  .hud { position: fixed; z-index: 5; display: flex; gap: 10px; align-items: center; }
+  .topbar { top: max(14px, env(safe-area-inset-top)); left: 14px; right: 14px; justify-content: space-between; pointer-events: none; }
+  .topbar > * { pointer-events: auto; }
+  .level-card {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 10px 16px; box-shadow: var(--shadow); backdrop-filter: blur(14px);
+    min-width: 0; color: var(--ink); font-family: var(--sans); text-align: left;
+    cursor: pointer; transition: background .15s, border-color .15s, transform .12s;
+  }
+  .level-card:hover { background: var(--card-strong); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+  .level-card:active { transform: scale(.985); }
+  .swap-glyph { width: 15px; height: 15px; opacity: .32; flex: 0 0 auto; transition: opacity .15s, color .15s; }
+  .level-card:hover .swap-glyph { opacity: .9; color: var(--accent); }
+  .level-dot {
+    width: 30px; height: 30px; border-radius: 50%; flex: 0 0 auto;
+    background: radial-gradient(circle at 34% 30%, var(--accent), color-mix(in srgb, var(--accent) 62%, #06110d));
+    box-shadow: inset 0 -2px 4px rgba(0, 0, 0, .22);
+  }
+  .level-text { min-width: 0; }
+  .eyebrow {
+    display: block; font-size: 10px; font-weight: 700; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .level-text h1,
+  .level-text .level-title {
+    margin: 2px 0 0; font-size: 16px; line-height: 1.15; font-weight: 700;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: block;
+  }
+  .tools { display: flex; gap: 8px; }
+  .btn {
+    appearance: none; border: 1px solid var(--line); background: var(--card);
+    color: var(--ink); font: 600 13px/1 var(--sans);
+    padding: 0 14px; height: 42px; border-radius: 13px; cursor: pointer;
+    box-shadow: var(--shadow); backdrop-filter: blur(14px);
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    transition: transform .12s ease, background .15s ease, border-color .15s ease, opacity .15s;
+    touch-action: manipulation;
+  }
+  .btn:hover { background: var(--card-strong); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .btn:active { transform: scale(.96); }
+  .btn:disabled { opacity: .38; pointer-events: none; }
+  .btn svg { width: 17px; height: 17px; }
+  .btn .lbl { display: inline; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .btn.primary:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
+  .btn.ghost { background: transparent; box-shadow: none; backdrop-filter: none; }
+
+  .bottombar {
+    bottom: max(14px, env(safe-area-inset-bottom)); left: 14px; right: 14px;
+    justify-content: space-between; pointer-events: none;
+  }
+  .bottombar > * { pointer-events: auto; }
+  .target-chip {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 8px 14px 8px 10px; box-shadow: var(--shadow); backdrop-filter: blur(14px);
+  }
+  .target-chip svg { width: 34px; height: 34px; }
+  .target-chip .t-label {
+    font-size: 9.5px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--muted); display: block; line-height: 1;
+  }
+  .target-chip b { font-size: 14px; display: block; margin-top: 3px; line-height: 1; }
+  .stat {
+    display: flex; align-items: baseline; gap: 7px;
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 9px 16px; box-shadow: var(--shadow); backdrop-filter: blur(14px);
+  }
+  .stat b { font-size: 20px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .04em; }
+  .levels { display: flex; gap: 6px; background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 5px; box-shadow: var(--shadow); backdrop-filter: blur(14px); }
+  .levels button {
+    appearance: none; border: 0; background: transparent; color: var(--muted);
+    width: 38px; height: 32px; border-radius: 10px; cursor: pointer;
+    font: 700 13px/1 var(--sans); transition: background .15s, color .15s;
+  }
+  .levels button.on { background: var(--accent); color: var(--accent-ink); }
+  .levels button:not(.on):hover { background: var(--accent-soft); color: var(--ink); }
+  .bar-tools { display: flex; align-items: center; gap: 8px; }
+  .level-pill { gap: 6px; padding: 0 12px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .level-pill .chev { width: 12px; height: 12px; opacity: .55; }
+
+  .level-menu {
+    position: fixed; z-index: 26; right: 14px;
+    bottom: calc(max(80px, env(safe-area-inset-bottom) + 70px));
+    width: min(330px, calc(100vw - 28px));
+    max-height: min(62vh, 520px); overflow: auto;
+    background: var(--card-strong); border: 1px solid var(--line);
+    border-radius: 18px; box-shadow: var(--shadow); padding: 6px;
+    backdrop-filter: blur(16px);
+  }
+  .level-menu[hidden] { display: none; }
+  .lm-head {
+    font: 700 9.5px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase;
+    color: var(--muted); padding: 9px 10px;
+  }
+  .lm-item {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    border: 0; background: transparent; color: var(--ink); text-align: left;
+    padding: 8px 10px; border-radius: 12px; cursor: pointer; font-family: var(--sans);
+    transition: background .14s;
+  }
+  .lm-item:hover { background: var(--accent-soft); }
+  .lm-item.on { background: var(--accent-soft); }
+  .lm-num {
+    width: 26px; height: 26px; border-radius: 8px; flex: 0 0 auto;
+    background: var(--line); color: var(--ink);
+    display: grid; place-items: center; font-weight: 700; font-size: 11.5px;
+  }
+  .lm-item.on .lm-num { background: var(--accent); color: var(--accent-ink); }
+  .lm-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .lm-text b { font-size: 13px; font-weight: 700; }
+  .lm-text small { font-size: 10.5px; color: var(--muted); }
+  .lm-check { margin-left: auto; color: var(--accent); font-weight: 700; }
+
+  .tip {
+    position: fixed; left: 50%; bottom: calc(max(80px, env(safe-area-inset-bottom) + 74px));
+    transform: translateX(-50%); z-index: 4;
+    background: var(--card-strong); border: 1px solid var(--line);
+    border-radius: 999px; padding: 9px 18px; box-shadow: var(--shadow);
+    font-size: 12.5px; color: var(--muted); font-weight: 500; white-space: nowrap;
+    transition: opacity .4s ease, transform .4s ease; backdrop-filter: blur(14px);
+  }
+  .tip.gone { opacity: 0; transform: translate(-50%, 8px); pointer-events: none; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(max(126px, env(safe-area-inset-bottom) + 120px));
+    transform: translate(-50%, 10px); z-index: 6;
+    background: var(--card-strong); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 999px; padding: 9px 18px; font-size: 12.5px; font-weight: 600;
+    box-shadow: var(--shadow); opacity: 0; pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+    backdrop-filter: blur(6px); padding: 20px;
+  }
+  .overlay[hidden] { display: none; }
+  .win-card {
+    width: min(380px, 100%); background: var(--card-strong); border: 1px solid var(--line);
+    border-radius: 26px; box-shadow: var(--shadow); padding: 28px 26px 22px; text-align: center;
+    animation: pop .45s cubic-bezier(.2, .9, .3, 1.2);
+  }
+  @keyframes pop { from { transform: scale(.86) translateY(12px); opacity: 0; } }
+  .win-badge {
+    width: 58px; height: 58px; margin: 0 auto 14px; border-radius: 50%;
+    background: var(--accent); color: var(--accent-ink); display: grid; place-items: center;
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  .win-badge svg { width: 30px; height: 30px; }
+  .win-card h2 { margin: 0 0 6px; font-size: 23px; letter-spacing: -.01em; }
+  .win-card p { margin: 0 0 20px; color: var(--muted); font-size: 13.5px; line-height: 1.45; }
+  .win-actions { display: flex; gap: 9px; justify-content: center; flex-wrap: wrap; }
+  .win-actions .btn { height: 44px; }
+
+  /* theme toggle (bottom bar) */
+  .theme-btn { width: 44px; padding: 0; flex: 0 0 auto; }
+  .theme-btn svg { width: 18px; height: 18px; }
+  /* the icon shows the mode you'll switch to */
+  .theme-btn .i-sun { display: none; }
+  .theme-btn .i-moon { display: block; }
+  :root[data-theme="dark"] .theme-btn .i-sun { display: block; }
+  :root[data-theme="dark"] .theme-btn .i-moon { display: none; }
+
+  /* info card */
+  #infoOverlay { z-index: 30; }
+  .info-card {
+    position: relative; width: min(540px, 100%); max-height: 86vh; overflow: auto;
+    background: var(--card-strong); border: 1px solid var(--line); border-radius: 26px;
+    box-shadow: var(--shadow); padding: 30px 30px 22px;
+    animation: pop .4s cubic-bezier(.2, .9, .3, 1.2);
+  }
+  .info-card h2 { margin: 0 0 6px; font-size: 25px; letter-spacing: -.01em; }
+  .info-lede { margin: 0 0 18px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+  .info-list { margin: 0 0 18px; padding: 0; list-style: none; display: grid; gap: 10px; }
+  .info-list li {
+    position: relative; padding-left: 24px; font-size: 13.5px; line-height: 1.45;
+  }
+  .info-list li::before {
+    content: ""; position: absolute; left: 7px; top: 7px; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--accent);
+  }
+  .info-list b { font-weight: 700; }
+  .info-levels {
+    margin: 0 0 18px; padding: 12px 14px; border: 1px dashed var(--line);
+    border-radius: 14px; font-size: 12.5px; line-height: 1.8; color: var(--muted);
+  }
+  .info-levels b { color: var(--ink); }
+  .info-foot {
+    display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline;
+    border-top: 1px solid var(--line); padding-top: 14px;
+    font-size: 12.5px; color: var(--muted);
+  }
+  .info-foot a { color: var(--accent); text-decoration: none; font-weight: 700; }
+  .info-foot a:hover { text-decoration: underline; }
+  .info-sub { opacity: .7; font-size: 11px; }
+  .info-close {
+    position: absolute; top: 12px; right: 12px; width: 34px; height: 34px;
+    padding: 0; border-radius: 50%; font-size: 20px; line-height: 1;
+    background: transparent; box-shadow: none; backdrop-filter: none;
+  }
+
+  @media (max-width: 620px) {
+    .topbar { top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; gap: 8px; }
+    .level-card { padding: 8px 10px; gap: 8px; border-radius: 15px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+    .level-card .swap-glyph { display: none; }
+    .level-dot { width: 24px; height: 24px; }
+    .level-text .level-title { font-size: 13px; }
+    .eyebrow { font-size: 8.5px; letter-spacing: .12em; }
+    .tools { gap: 4px; flex: 0 0 auto; }
+    .btn { height: 38px; padding: 0 7px; border-radius: 11px; font-size: 12px; }
+    .btn .lbl { display: none; }
+    .btn svg { width: 16px; height: 16px; }
+    .bottombar { bottom: max(10px, env(safe-area-inset-bottom)); left: 10px; right: 10px; gap: 8px; }
+    .target-chip { padding: 7px 12px 7px 8px; gap: 8px; border-radius: 15px; }
+    .target-chip svg { width: 28px; height: 28px; }
+    .target-chip b { font-size: 13px; }
+    .stat { padding: 8px 13px; border-radius: 15px; }
+    .stat b { font-size: 18px; }
+    .stat span { font-size: 10px; }
+    .levels { padding: 4px; border-radius: 15px; }
+    .levels button { width: 32px; height: 30px; }
+    .bar-tools { gap: 6px; }
+    .theme-btn { width: 40px; }
+    .tip { font-size: 11.5px; padding: 8px 14px; max-width: 92vw; white-space: normal; text-align: center; }
+    .info-card { padding: 26px 20px 18px; border-radius: 22px; }
+    .info-card h2 { font-size: 22px; }
+    .info-close { top: 10px; right: 10px; }
+  }
+  @media (max-width: 380px) {
+    .eyebrow { display: none; }
+    .level-text .level-title { font-size: 12.5px; }
+    .stat span { display: none; }
+    .level-dot { display: none; }
+    .level-card { padding: 8px 10px; }
+  }
+</style>
+<script>
+  // Resolve the theme before first paint so there is no flash.
+  (function () {
+    try {
+      var saved = localStorage.getItem("hinge-puzzle-theme-v1");
+      var dark = saved ? saved === "dark"
+        : window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    } catch (e) {
+      document.documentElement.setAttribute("data-theme", "light");
+    }
+  })();
+</script>
+</head>
+<body>
+<canvas id="board" role="img" aria-label="A shape cut into hinged pieces. Tap a piece, then tap an arrow to swing it."></canvas>
+
+<header class="hud topbar">
+  <button class="level-card" id="levelCard" type="button"
+          title="Switch direction — play it the other way (S)"
+          aria-label="Switch direction">
+    <span class="level-dot" aria-hidden="true"></span>
+    <span class="level-text">
+      <span class="eyebrow" id="levelEyebrow">Level 1 of 7</span>
+      <span class="level-title" id="levelTitle">Triangle → Square</span>
+    </span>
+    <svg class="swap-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4 9h13l-3-3"/><path d="M20 15H7l3 3"/>
+    </svg>
+  </button>
+  <div class="tools">
+    <button class="btn" id="hintBtn" aria-label="Show a hint" title="Hint (H)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z"/></svg>
+      <span class="lbl">Hint</span>
+    </button>
+    <button class="btn" id="rotateBtn" aria-label="Rotate the board 90 degrees clockwise" title="Rotate board (Q)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      <span class="lbl">Rotate</span>
+    </button>
+    <button class="btn" id="undoBtn" aria-label="Undo last swing" title="Undo (U)" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>
+      <span class="lbl">Undo</span>
+    </button>
+    <button class="btn" id="resetBtn" aria-label="Restart level" title="Restart (R)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 5 9 12l10 7Z"/><path d="M5 5v14"/></svg>
+      <span class="lbl">Restart</span>
+    </button>
+    <button class="btn" id="infoBtn" aria-label="How to play, credits and theme" title="About this game (I)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 10.8v5.4"/><circle cx="12" cy="7.6" r=".9" fill="currentColor" stroke="none"/></svg>
+      <span class="lbl">Info</span>
+    </button>
+  </div>
+</header>
+
+<div class="tip" id="tip">Tap a piece, then tap an arrow to swing it.</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<footer class="hud bottombar">
+  <div class="target-chip">
+    <svg id="targetSvg" viewBox="-11 -11 22 22" aria-hidden="true">
+      <polygon id="targetPoly" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></polygon>
+    </svg>
+    <div>
+      <span class="t-label">Target</span>
+      <b id="targetName">Pentagon</b>
+    </div>
+  </div>
+  <div class="stat"><b id="moveCount">0</b><span>swings</span></div>
+  <div class="bar-tools">
+    <button class="btn level-pill" id="levelBtn" aria-haspopup="true" aria-expanded="false" title="Choose a level (L)">
+      <span id="levelPill">1 / 6</span>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <button class="btn theme-btn" id="themeBtn" aria-label="Switch to dark mode" title="Light / dark (D)">
+      <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+    </button>
+  </div>
+</footer>
+
+<div class="level-menu" id="levelMenu" hidden>
+  <div class="lm-head">Choose a level</div>
+  <div class="lm-list" id="lmList"></div>
+</div>
+
+<div class="overlay" id="infoOverlay" hidden>
+  <div class="info-card" role="dialog" aria-modal="true" aria-labelledby="infoTitle">
+    <button class="btn ghost info-close" id="infoClose" aria-label="Close">×</button>
+    <h2 id="infoTitle">Dissect</h2>
+    <p class="info-lede">A shape, already cut into hinged pieces. Every piece is hinged to its
+      neighbour, so it can only swing around its joint — swing them until the outline becomes
+      the target shape.</p>
+    <ul class="info-list">
+      <li><b>Tap a piece</b> to see how it can move, then tap a handle to swing it.</li>
+      <li><b>Two handles</b> mean the piece can swing either way — take your pick.</li>
+      <li>A swing carries everything hinged behind the piece, and no piece ever passes through another.</li>
+      <li>The camera pulls back so you can watch each swing. <b>Rotate</b> turns the whole board 90°.</li>
+      <li>Click the <b>level title</b> to play the same dissection the other way round.</li>
+      <li><b>Hint</b> finds the shortest remaining route from wherever you are.</li>
+    </ul>
+    <p class="info-levels">
+      <b>Eight levels</b> — seven hinged pairs (triangles, squares, pentagons, hexagons and an
+      octagon) plus a shuffled scramble. Click the level title to swap direction, or the level
+      button (bottom-right) to jump around.
+    </p>
+    <div class="info-foot">
+      <span>Made by <a href="https://github.com/malcolmblakeman" target="_blank" rel="noopener">Malcolm Blakeman</a></span>
+      <span class="info-sub">Hinged dissections · equal-area, overlap-free</span>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="win-card" role="dialog" aria-modal="true" aria-labelledby="winTitle">
+    <div class="win-badge" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"/></svg>
+    </div>
+    <h2 id="winTitle">Pentagon formed</h2>
+    <p id="winSub">Solved in 7 swings.</p>
+    <div class="win-actions">
+      <button class="btn primary" id="winNext">Next level</button>
+      <button class="btn ghost" id="winReplay">Replay my moves</button>
+      <button class="btn ghost" id="winRestart">Start over</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+/* ------------------------------------------------------------------ *
+ *  Level data — an eight-piece pentagon ⇄ triangle hinged dissection.
+ *  Every step below is a rigid rotation of one hinged group about a
+ *  shared hinge point; the sweeps were verified collision-free.
+ * ------------------------------------------------------------------ */
+const AREA = 22906.3719;
+
+// Canonical silhouettes for the regular targets, and the outlines of the two
+// non-convex ones (star = hexagram, cross = Greek cross).
+const TRIANGLE = [[0, 132.79], [-115, -66.4], [115, -66.4]];
+const SQUARE = [[-75.674, -75.674], [75.674, -75.674], [75.674, 75.674], [-75.674, 75.674]];
+const PENTAGON = [[0, 98.15], [-93.35, 30.33], [-57.69, -79.41], [57.69, -79.41], [93.35, 30.33]];
+const HEXAGON = [[93.897, 0], [46.949, 81.317], [-46.949, 81.317], [-93.897, 0], [-46.949, -81.317], [46.949, -81.317]];
+const CROSS = [[30.27,-60.539],[-30.27,-90.809],[0,-151.349],[60.539,-121.079],[90.809,-181.618],[151.349,-151.349],[121.079,-90.809],[181.618,-60.539],[151.349,0],[90.809,-30.27],[60.539,30.27],[0,0]];
+// Regular octagon and decagon of the same area. The pentagram uses the exact
+// star outline from the applet's pentagram ⇄ decagon entry, scaled to AREA.
+const OCTAGON = Array.from({ length: 8 }, (_, i) => {
+  const a = Math.PI / 8 + i * Math.PI / 4;
+  const R = Math.sqrt(AREA / (2 * Math.SQRT2));
+  return [R * Math.cos(a), R * Math.sin(a)];
+});
+const DECAGON = Array.from({ length: 10 }, (_, i) => {
+  const a = Math.PI / 2 + i * Math.PI / 5;
+  const R = Math.sqrt(2 * AREA / (10 * Math.sin(Math.PI / 5)));
+  return [R * Math.cos(a), R * Math.sin(a)];
+});
+const STAR_RAW = [
+  [0, 2.618034], [0.587785, 0.809017], [2.489898, 0.809017],
+  [0.951057, -0.309017], [1.538842, -2.118034], [0, -1],
+  [-1.538842, -2.118034], [-0.951057, -0.309017],
+  [-2.489898, 0.809017], [-0.587785, 0.809017],
+];
+let starArea2 = 0;
+for (let i = 0; i < STAR_RAW.length; i++) {
+  const p = STAR_RAW[i], q = STAR_RAW[(i + 1) % STAR_RAW.length];
+  starArea2 += p[0] * q[1] - q[0] * p[1];
+}
+const STAR_SCALE = Math.sqrt(AREA / Math.abs(starArea2 / 2));
+const PENTAGRAM = STAR_RAW.map(([x, y]) => [x * STAR_SCALE, y * STAR_SCALE]);
+const SHAPE = {
+  Triangle: TRIANGLE, Square: SQUARE, Pentagon: PENTAGON, Hexagon: HEXAGON,
+  Cross: CROSS, Octagon: OCTAGON, Decagon: DECAGON, Pentagram: PENTAGRAM,
+};
+
+const PI = Math.PI, TAU = PI * 2;
+
+// Every dissection is stored as one reversible pair: starts.a is the pose for
+// a → b (steps[0]); starts.b is the pose for b → a (steps[1], the reverse).
+// ------------------------------------------------------------------
+//  Random square level.
+//  A square cut into six congruent 2:3 rectangles.  The same pieces
+//  are hinged three different ways; each hinging has a pool of
+//  scrambled starts whose shortest route back to the square was
+//  proved by a breadth-first search over the game's own move model.
+// ------------------------------------------------------------------
+const RANDOM_SQUARE = [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0,50.449504],[75.674256,50.449504],[75.674256,100.899008],[0,100.899008]],[[0,100.899008],[75.674256,100.899008],[75.674256,151.348511],[0,151.348511]],[[75.674256,0],[151.348511,0],[151.348511,50.449504],[75.674256,50.449504]],[[75.674256,50.449504],[151.348511,50.449504],[151.348511,100.899008],[75.674256,100.899008]],[[75.674256,100.899008],[151.348511,100.899008],[151.348511,151.348511],[75.674256,151.348511]]];
+const RANDOM_HINGINGS = [
+  { name: "Weave", parent: [-1,0,1,4,5,2], root: 0, hingeIdx: [-1,1,0,3,2,3], entries: [
+    { d: 7, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[151.348488,50.38958],[75.674256,50.449504],[75.634306,0.000016],[151.308538,-0.059908]],[[151.308538,-0.059908],[75.73741,-4.009278],[78.370323,-54.390031],[153.941451,-50.440661]],[[-88.804529,-134.409864],[-19.095092,-163.857908],[0.536938,-117.38495],[-69.1725,-87.936905]],[[-69.1725,-87.936905],[4.611746,-71.129823],[-6.592975,-21.940326],[-80.377221,-38.747408]],[[67.204557,-5.191676],[-6.592975,-21.940326],[4.572791,-71.13868],[78.370323,-54.390031]]], solution: [{k:1,delta:3.142912},{k:2,delta:3.08938},{k:2,delta:-3.142912},{k:3,delta:0.624193},{k:4,delta:-3.142912},{k:5,delta:2.971159},{k:5,delta:-3.141988}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[151.348488,50.38958],[75.674256,50.449504],[75.634306,0.000016],[151.308538,-0.059908]],[[151.308538,-0.059908],[106.156805,-60.788106],[146.64227,-90.889261],[191.794003,-30.161064]],[[33.959203,-67.83085],[0.490393,0.039849],[-44.756739,-22.272691],[-11.28793,-90.14339]],[[-11.28793,-90.14339],[22.234614,-157.987564],[67.464064,-135.639202],[33.94152,-67.795027]],[[101.625926,-68.114686],[67.464064,-135.639202],[112.480407,-158.413776],[146.64227,-90.889261]]], solution: [{k:1,delta:3.142912},{k:2,delta:-0.932784},{k:3,delta:3.142912},{k:4,delta:-0.927824},{k:5,delta:2.971159},{k:5,delta:-3.141988}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0.214918,56.148746],[75.674256,50.449504],[79.473751,100.755729],[4.014413,106.454971]],[[4.014413,106.454971],[53.849368,163.402932],[15.884061,196.626235],[-33.950894,139.678275]],[[104.49156,329.223732],[124.502659,402.204202],[75.849013,415.544934],[55.837914,342.564465]],[[55.837914,342.564465],[35.884612,269.568173],[84.548807,256.265972],[104.502109,329.262264]],[[64.537707,183.285502],[84.548807,256.265972],[35.895161,269.606704],[15.884061,196.626235]]], solution: [{k:1,delta:-3.067},{k:1,delta:3.142912},{k:2,delta:-0.927824},{k:3,delta:3.142912},{k:4,delta:-3.142912},{k:5,delta:-0.451132}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[151.348488,50.38958],[75.674256,50.449504],[75.634306,0.000016],[151.308538,-0.059908]],[[151.308538,-0.059908],[226.982794,-0.059908],[226.982794,50.389595],[151.308538,50.389595]],[[384.658262,26.476589],[459.229321,39.350989],[450.646388,89.065028],[376.075329,76.190629]],[[376.075329,76.190629],[301.514488,63.257183],[310.136786,13.549956],[384.697626,26.483401]],[[235.565727,0.675556],[310.136786,13.549956],[301.553853,63.263995],[226.982794,50.389595]]], solution: [{k:1,delta:3.142912},{k:2,delta:-3.142912},{k:3,delta:3.142912},{k:4,delta:-3.142912},{k:5,delta:2.971159},{k:5,delta:-3.141988}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0.214918,56.148746],[75.674256,50.449504],[79.473751,100.755729],[4.014413,106.454971]],[[4.014413,106.454971],[53.849368,163.402932],[15.884061,196.626235],[-33.950894,139.678275]],[[-122.319389,116.474378],[-172.8064,60.103688],[-135.22594,26.445681],[-84.738929,82.81637]],[[-84.738929,82.81637],[-34.296571,139.227021],[-71.903672,172.855259],[-122.34603,116.444608]],[[-22.098769,229.829504],[-71.903672,172.855259],[-33.920842,139.651991],[15.884061,196.626235]]], solution: [{k:1,delta:-3.067},{k:1,delta:3.142912},{k:2,delta:-0.927824},{k:3,delta:3.142912},{k:4,delta:-3.130876},{k:5,delta:-3.141988}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[151.348488,50.38958],[75.674256,50.449504],[75.634306,0.000016],[151.308538,-0.059908]],[[151.308538,-0.059908],[226.982794,-0.059909],[226.982794,50.389595],[151.308538,50.389595]],[[89.505284,213.685822],[54.144823,146.781183],[98.747916,123.207542],[134.108377,190.112181]],[[134.108377,190.112181],[104.776371,120.353839],[151.281933,100.799168],[180.613939,170.55751]],[[226.956178,100.839092],[151.281933,100.799168],[151.308549,50.349671],[226.982794,50.389595]]], solution: [{k:2,delta:-3.142912},{k:1,delta:3.142912},{k:3,delta:-3.054218},{k:3,delta:3.142912},{k:4,delta:-1.17276},{k:5,delta:-3.141988}] },
+  ] },
+  { name: "Lattice", parent: [-1,0,1,4,5,2], root: 0, hingeIdx: [-1,0,1,2,3,3], entries: [
+    { d: 7, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0,50.449504],[74.226413,65.181531],[64.405061,114.665806],[-9.821352,99.933779]],[[128.394581,155.063013],[64.405061,114.665806],[91.336532,72.006126],[155.326052,112.403333]],[[31.018855,-29.262764],[74.972935,-90.863347],[116.03999,-61.560627],[72.08591,0.039956]],[[75.634368,2.42358],[116.03999,-61.560627],[158.696128,-34.623546],[118.290506,29.360661]],[[118.290506,29.360661],[182.258704,69.791621],[155.30473,112.437087],[91.336532,72.006126]]], solution: [{k:3,delta:3.085889},{k:1,delta:2.946457},{k:2,delta:2.774924},{k:1,delta:-3.142912},{k:3,delta:-3.142912},{k:4,delta:1.57172},{k:5,delta:-3.142735}] },
+    { d: 7, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0,50.449504],[75.55352,54.722517],[72.704844,105.09153],[-2.848675,100.818517]],[[68.461756,180.646736],[72.704844,105.09153],[123.074982,107.920255],[118.831894,183.475461]],[[73.557502,53.347292],[117.511582,-8.253291],[158.578637,21.049429],[114.624558,82.650012]],[[127.457721,90.028277],[158.578637,21.049429],[204.564536,41.796706],[173.44362,110.775555]],[[173.44362,110.775555],[169.160671,186.328512],[118.792033,183.473212],[123.074982,107.920255]]], solution: [{k:1,delta:3.085889},{k:2,delta:1.57172},{k:1,delta:-3.142912},{k:3,delta:2.946457},{k:3,delta:-3.142912},{k:4,delta:2.774924},{k:5,delta:-3.142735}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0,50.449504],[-72.723058,71.376754],[-86.674558,22.894715],[-13.9515,1.967465]],[[-141.2088,-29.570601],[-86.674558,22.894715],[-121.651436,59.250877],[-176.185678,6.785561]],[[-195.256846,204.145291],[-263.733796,171.935039],[-242.260295,126.283739],[-173.783345,158.493991]],[[-168.822894,144.546847],[-242.260295,126.283739],[-230.08489,77.325472],[-156.647489,95.58858]],[[-156.647489,95.58858],[-211.154044,43.0945],[-176.157991,6.756797],[-121.651436,59.250877]]], solution: [{k:1,delta:-2.861924},{k:2,delta:2.09586},{k:3,delta:2.946457},{k:3,delta:-3.142912},{k:4,delta:0.523375},{k:5,delta:-3.142735}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0,50.449504],[2.842488,126.070356],[-47.571414,127.965347],[-50.413901,52.344496]],[[-122.809305,136.080311],[-47.571414,127.965347],[-42.161438,178.123942],[-117.39933,186.238905]],[[1.820003,126.068811],[70.997457,156.745722],[50.546183,202.864024],[-18.631271,172.187113]],[[-21.641904,180.159992],[50.546183,202.864024],[35.410161,250.989416],[-36.777926,228.285384]],[[-36.777926,228.285384],[-112.020088,236.360652],[-117.4036,186.19921],[-42.161438,178.123942]]], solution: [{k:1,delta:-1.533753},{k:2,delta:1.641195},{k:3,delta:3.029706},{k:3,delta:-3.142912},{k:4,delta:2.730489},{k:5,delta:-3.142735}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0,50.449504],[74.226413,65.181531],[64.405061,114.665806],[-9.821352,99.933779]],[[-7.261189,138.966867],[64.405061,114.665806],[80.605768,162.443307],[8.939517,186.744367]],[[233.944254,300.049278],[165.467305,267.839027],[186.940806,222.187727],[255.417755,254.397978]],[[130.041915,172.296754],[186.940806,222.187727],[153.680157,260.120321],[96.781266,210.229347]],[[96.781266,210.229347],[25.102205,234.492595],[8.926707,186.706554],[80.605768,162.443307]]], solution: [{k:1,delta:2.946457},{k:1,delta:-3.142912},{k:2,delta:0.523375},{k:3,delta:-2.861924},{k:4,delta:2.09586},{k:5,delta:-3.142735}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0,50.449504],[-75.674232,50.38958],[-75.634282,-0.059908],[0.039949,0.000016]],[[-113.48092,-65.590245],[-75.634282,-0.059908],[-119.321174,25.171183],[-157.167811,-40.359153]],[[39.043848,61.676905],[24.290914,135.899165],[-25.190593,126.063876],[-10.437659,51.841616]],[[-25.169278,50.389623],[-25.190593,126.063876],[-75.640095,126.049666],[-75.61878,50.375414]],[[-75.61878,50.375414],[-113.425126,115.929004],[-157.127519,90.724773],[-119.321174,25.171183]]], solution: [{k:2,delta:2.09586},{k:1,delta:-3.142912},{k:3,delta:2.946457},{k:3,delta:-3.142912},{k:4,delta:0.523375},{k:5,delta:-1.047488}] },
+  ] },
+  { name: "Swirl", parent: [-1,0,1,4,5,2], root: 0, hingeIdx: [-1,0,0,2,2,0], entries: [
+    { d: 7, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0,50.449504],[74.901045,61.239611],[67.707641,111.173641],[-7.193405,100.383534]],[[-7.193405,100.383534],[5.757274,174.941383],[-43.947959,183.575169],[-56.898638,109.017319]],[[127.060128,38.627375],[121.651548,114.108102],[71.331063,110.502382],[76.739643,35.021655]],[[-3.222124,123.479874],[71.331063,110.502382],[79.982724,160.204507],[5.429537,173.181999]],[[5.757274,174.941383],[79.982724,160.204507],[89.807308,209.68814],[15.581858,224.425017]]], solution: [{k:1,delta:2.999311},{k:5,delta:1.595598},{k:1,delta:-3.142912},{k:2,delta:-1.256266},{k:3,delta:-1.8152},{k:4,delta:3.118735},{k:4,delta:-3.142517}] },
+    { d: 7, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0,50.449504],[74.640041,62.917753],[66.327875,112.677781],[-8.312166,100.209531]],[[-8.312166,100.209531],[63.924285,122.759212],[48.891164,170.916846],[-23.345287,148.367165]],[[208.959413,93.940736],[133.369732,90.363992],[135.754228,39.970871],[211.343909,43.547616]],[[119.953143,-34.035336],[135.754228,39.970871],[86.416757,50.504928],[70.615672,-23.501279]],[[63.924285,122.759212],[86.416757,50.504928],[134.58628,65.499909],[112.093808,137.754194]]], solution: [{k:1,delta:2.976868},{k:2,delta:1.433733},{k:1,delta:-3.142912},{k:3,delta:-1.828958},{k:5,delta:1.57238},{k:2,delta:-1.571324},{k:4,delta:-2.629585}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0,50.449504],[-75.674232,50.38958],[-75.634282,-0.059908],[0.039949,0.000016]],[[0.039949,0.000016],[0.09985,-75.674216],[50.549338,-75.634282],[50.489437,0.039949]],[[-143.857186,-186.164511],[-68.845673,-176.17122],[-75.507866,-126.163545],[-150.51938,-136.156836]],[[-151.182056,-126.263338],[-75.507866,-126.163545],[-75.574395,-75.714085],[-151.248585,-75.813878]],[[0.09985,-75.674216],[-75.574395,-75.714085],[-75.547816,-126.163582],[0.126429,-126.123713]]], solution: [{k:1,delta:-3.142912},{k:2,delta:-1.570861},{k:3,delta:1.439671},{k:3,delta:-1.571324},{k:5,delta:1.571853},{k:4,delta:-3.142912}] },
+    { d: 7, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0,50.449504],[75.023327,60.353716],[68.420518,110.369267],[-6.602808,100.465055]],[[-6.602808,100.465055],[-81.618269,90.501437],[-74.975857,40.49113],[0.039604,50.454748]],[[-176.935319,264.296809],[-218.760183,201.231179],[-176.716429,173.347936],[-134.891566,236.413567]],[[-127.00482,230.403601],[-176.716429,173.347936],[-138.67932,140.206864],[-88.96771,197.262528]],[[-81.618269,90.501437],[-138.67932,140.206864],[-171.816271,102.166163],[-114.75522,52.460736]]], solution: [{k:1,delta:1.43954},{k:1,delta:-1.571324},{k:2,delta:-3.142912},{k:3,delta:3.01126},{k:3,delta:-3.142912},{k:5,delta:0.849452},{k:4,delta:-1.57082}] },
+    { d: 7, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0,50.449504],[-16.703327,124.257307],[-65.90853,113.121756],[-49.205202,39.313952]],[[-49.205202,39.313952],[-65.641231,-34.553835],[-16.39604,-45.511187],[0.039989,28.3566]],[[-59.599689,85.425413],[-135.150072,81.097294],[-132.264659,30.730372],[-56.714276,35.058491]],[[-57.42438,19.52655],[-132.264659,30.730372],[-139.733874,-19.163147],[-64.893595,-30.366969]],[[-65.641231,-34.553835],[-139.733874,-19.163147],[-149.994332,-68.558243],[-75.901689,-83.94893]]], solution: [{k:1,delta:-1.793883},{k:3,delta:2.93656},{k:4,delta:1.514586},{k:3,delta:-3.142912},{k:5,delta:1.557458},{k:2,delta:-2.700621},{k:4,delta:-1.570928}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0,50.449504],[-6.358255,125.856172],[-56.629367,121.617335],[-50.271112,46.210667]],[[-50.271112,46.210667],[-66.872848,120.041388],[-116.093328,108.973564],[-99.491593,35.142843]],[[-16.287916,258.990507],[-24.272675,183.738686],[25.895206,178.415514],[33.879964,253.667335]],[[96.628905,151.520593],[25.895206,178.415514],[7.965258,131.259714],[78.698958,104.364793]],[[-66.872848,120.041388],[7.965258,131.259714],[0.486374,181.151785],[-74.351732,169.933459]]], solution: [{k:2,delta:2.846322},{k:1,delta:-1.655444},{k:3,delta:-1.828958},{k:5,delta:1.643978},{k:2,delta:-2.983912},{k:4,delta:-2.629585}] },
+  ] },
+  { name: "Zigzag", parent: [-1,0,1,0,3,4], root: 0, hingeIdx: [-1,1,0,0,0,1], entries: [
+    { d: 7, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[146.303894,77.616528],[75.674256,50.449504],[93.785605,3.363078],[164.415243,30.530103]],[[164.415243,30.530103],[100.425723,-9.867104],[127.357194,-52.526784],[191.346714,-12.129577]],[[75.674256,0],[0.000011,0.039924],[-0.026606,-50.409572],[75.647639,-50.449497]],[[75.647639,-50.449497],[75.637687,-126.123752],[126.08719,-126.130387],[126.097143,-50.456132]],[[130.37014,-50.57743],[126.08719,-126.130387],[176.455828,-128.985686],[180.738778,-53.432729]]], solution: [{k:4,delta:-1.57172},{k:1,delta:2.774924},{k:2,delta:2.946457},{k:2,delta:-3.142912},{k:3,delta:3.142912},{k:5,delta:-3.085889},{k:5,delta:3.142384}] },
+    { d: 7, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[75.704228,126.123754],[75.674256,50.449504],[126.123756,50.429523],[126.153727,126.103772]],[[126.153727,126.103772],[130.396816,50.548566],[180.766953,53.377292],[176.523865,128.932498]],[[75.674256,0],[0.000011,0.039924],[-0.026606,-50.409572],[75.647639,-50.449497]],[[75.647639,-50.449497],[146.262935,-77.65378],[164.399124,-30.576917],[93.783829,-3.372633]],[[100.430925,9.854044],[164.399124,-30.576917],[191.353098,12.068549],[127.384899,52.499509]]], solution: [{k:1,delta:1.57172},{k:2,delta:3.085889},{k:2,delta:-3.142912},{k:4,delta:-2.774924},{k:3,delta:3.142912},{k:5,delta:-2.946457},{k:5,delta:3.142384}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[0.000011,50.40958],[75.674256,50.449504],[75.64764,100.899001],[-0.026606,100.859076]],[[-0.026606,100.859076],[-75.700795,100.759228],[-75.63423,50.309768],[0.03996,50.409616]],[[75.674256,0],[150.062318,-13.892776],[159.324168,35.699265],[84.936106,49.592041]],[[84.936106,49.592041],[159.305722,63.583226],[149.978266,113.162969],[75.60865,99.171785]],[[75.310985,100.858898],[149.978266,113.162969],[141.775551,162.941157],[67.108271,150.637085]]], solution: [{k:3,delta:-2.957486},{k:2,delta:-3.142912},{k:4,delta:-0.371118},{k:3,delta:3.142912},{k:5,delta:-3.119745},{k:5,delta:3.142384}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[10.110019,88.237384],[75.674256,50.449504],[100.866176,94.158995],[35.301939,131.946875]],[[35.301939,131.946875],[106.96819,107.645815],[123.168897,155.423315],[51.502646,179.724375]],[[75.674256,0],[113.53265,-65.523545],[157.215013,-40.284616],[119.356619,25.238929]],[[119.356619,25.238929],[157.111043,90.822437],[113.388705,115.992053],[75.634281,50.408545]],[[151.19505,181.545643],[113.388705,115.992053],[157.091098,90.787822],[194.897444,156.341412]]], solution: [{k:1,delta:0.523375},{k:2,delta:2.946457},{k:2,delta:-3.142912},{k:4,delta:-2.09586},{k:3,delta:1.047665},{k:5,delta:3.142384}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[113.572773,115.94985],[75.674256,50.449504],[119.341153,25.183826],[157.23967,90.684172]],[[157.23967,90.684172],[211.773913,143.149488],[176.797035,179.50565],[122.262793,127.040334]],[[75.674256,0],[0.000011,0.039924],[-0.026606,-50.409572],[75.647639,-50.449497]],[[75.647639,-50.449497],[10.063476,-88.202781],[35.232332,-131.925557],[100.816496,-94.172272]],[[106.911394,-107.66231],[35.232332,-131.925557],[51.40783,-179.711598],[123.086892,-155.44835]]], solution: [{k:1,delta:2.09586},{k:2,delta:-2.861924},{k:4,delta:-0.523375},{k:3,delta:3.142912},{k:5,delta:-2.946457},{k:5,delta:3.142384}] },
+    { d: 6, start: [[[0,0],[75.674256,0],[75.674256,50.449504],[0,50.449504]],[[9.62352,87.380429],[75.674256,50.449504],[100.294873,94.483328],[34.244137,131.414253]],[[34.244137,131.414253],[103.507337,100.931437],[123.829214,147.106904],[54.566014,177.58972]],[[75.674256,0],[0.000011,0.039924],[-0.026606,-50.409572],[75.647639,-50.449497]],[[75.647639,-50.449497],[121.087878,-110.962121],[161.429627,-80.668629],[115.989389,-20.156005]],[[206.821933,-141.217217],[161.429627,-80.668629],[121.063902,-110.930166],[166.456208,-171.478755]]], solution: [{k:1,delta:0.510353},{k:2,delta:3.047151},{k:2,delta:-3.142912},{k:4,delta:-2.215942},{k:3,delta:3.142912},{k:5,delta:3.142384}] },
+  ] },
+];
+
+
+
+
+
+const PAIRS = [
+  {
+    id: "tri-square", a: "Triangle", b: "Square",
+    tree: { parent: [2,0,-1,2], roots: [2] },
+    hingeIdx: [1,2,-1,0],
+    starts: {
+      a: [
+      [[0, 132.791], [-57.5, 33.198], [-8.74, -9.414], [7.704, -23.784], [57.5, 33.198]],
+      [[56.463, -66.395], [115, -66.395], [57.5, 33.198], [7.704, -23.784]],
+      [[-57.5, 33.198], [-115, -66.395], [-58.537, -66.395], [-8.74, -9.414]],
+      [[-58.537, -66.395], [56.463, -66.395], [7.704, -23.784], [-8.74, -9.414]],
+    ],
+      b: [
+      [[-115, -66.395], [-57.5, 33.198], [-106.26, 75.809], [-122.704, 90.179], [-172.5, 33.198]],
+      [[-173.537, -66.395], [-115, -66.395], [-172.5, 33.198], [-222.296, -23.784]],
+      [[-57.5, 33.198], [-115, -66.395], [-58.537, -66.395], [-8.74, -9.414]],
+      [[-58.537, -66.395], [-173.537, -66.395], [-124.777, -109.007], [-108.333, -123.377]],
+    ],
+    },
+    steps: [
+      [
+        { k: 0, delta: 3.141939 },
+        { k: 1, delta: 3.141766 },
+        { k: 3, delta: -3.141588 },
+      ],
+      [
+        { k: 0, delta: -3.142221 },
+        { k: 1, delta: -3.142129 },
+        { k: 3, delta: 3.139896 },
+      ],
+    ],
+  },
+  {
+    id: "tri-hex", a: "Triangle", b: "Hexagon",
+    tree: { parent: [1,5,5,4,5,-1], roots: [5] },
+    hingeIdx: [1,4,2,2,3,-1],
+    starts: {
+      a: [
+      [[99.593, -39.711], [57.5, 33.201], [33.198, -57.5]],
+      [[57.5, 33.201], [15.408, 106.104], [-8.893, 99.597], [-33.197, 8.897], [33.198, -57.5]],
+      [[115.001, -66.397], [99.593, -39.711], [-0.005, -66.395]],
+      [[15.408, 106.104], [0, 132.789], [-21.043, 96.339]],
+      [[-33.197, 8.897], [-8.893, 99.597], [-21.043, 96.339], [-78.545, -3.254]],
+      [[33.198, -57.5], [-33.197, 8.897], [-78.545, -3.254], [-115.001, -66.392], [-0.005, -66.395]],
+    ],
+      b: [
+      [[-59.533, -59.532], [-0.002, -0.001], [-93.902, -0.004]],
+      [[-0.002, -0.001], [-59.524, -59.53], [-46.95, -81.318], [46.951, -81.316], [93.899, 0.002]],
+      [[-51.561, 29.768], [-43.584, 0.004], [59.526, 0.003]],
+      [[-43.58, -0.002], [-51.557, 29.763], [-81.316, 0]],
+      [[-46.947, 81.318], [-93.896, -0.003], [-81.316, 0], [0.001, 81.319]],
+      [[93.899, 0.002], [46.949, 81.319], [0.001, 81.319], [-51.552, 29.765], [59.526, 0.003]],
+    ],
+    },
+    steps: [
+      [
+        { k: 2, delta: -3.141593 },
+        { k: 0, delta: 3.141593 },
+        { k: 3, delta: 3.141593 },
+        { k: 4, delta: 3.141593 },
+        { k: 1, delta: -4.18879 },
+      ],
+      [
+        { k: 1, delta: 4.18879 },
+        { k: 4, delta: -3.141593 },
+        { k: 3, delta: -3.141593 },
+        { k: 0, delta: -3.141593 },
+        { k: 2, delta: 3.141593 },
+      ],
+    ],
+  },
+  {
+    id: "sq-hex", a: "Square", b: "Hexagon",
+    tree: { parent: [-1,0,0,5,5,0], roots: [0] },
+    hingeIdx: [-1,0,2,3,0,0],
+    starts: {
+      a: [
+      [[-75.679, -75.679], [-76.238, -6.875], [-53.095, 33.973], [40.799, 34.736], [64.603, -5.731], [0.61, -75.06]],
+      [[-76.238, -6.875], [-53.095, 33.973], [-76.899, 74.44]],
+      [[76.797, -61.93], [76.899, -74.44], [0.61, -75.06], [12.245, -62.454]],
+      [[-76.899, 74.44], [-53.095, 33.973], [40.799, 34.736], [63.942, 75.584]],
+      [[76.238, 6.875], [12.245, -62.454], [76.797, -61.93]],
+      [[64.603, -5.731], [76.238, 6.875], [75.679, 75.679], [63.942, 75.584], [40.799, 34.736]],
+    ],
+      b: [
+      [[-70.423, -28.148], [-70.423, 40.659], [-46.949, 81.317], [46.949, 81.317], [70.423, 40.659], [5.869, -28.148]],
+      [[-70.423, 40.659], [-93.897, 0], [-70.423, -40.659]],
+      [[-70.423, -40.659], [-70.423, -28.148], [5.869, -28.148], [-5.869, -40.659]],
+      [[-70.423, -40.659], [-46.949, -81.317], [46.949, -81.317], [70.423, -40.659]],
+      [[58.686, 28.148], [-5.869, -40.659], [58.686, -40.658]],
+      [[70.423, 40.659], [58.686, 28.148], [58.686, -40.659], [70.423, -40.659], [93.897, 0]],
+    ],
+    },
+    steps: [
+      [
+        { k: 3, delta: -3.141593 },
+        { k: 1, delta: 3.141593 },
+        { k: 2, delta: -3.141593 },
+        { k: 4, delta: 3.141593 },
+        { k: 5, delta: -3.141593 },
+      ],
+      [
+        { k: 5, delta: 3.141593 },
+        { k: 4, delta: -3.141593 },
+        { k: 2, delta: 3.141593 },
+        { k: 1, delta: -3.141593 },
+        { k: 3, delta: 3.141593 },
+      ],
+    ],
+  },
+  {
+    id: "tri-pent", a: "Triangle", b: "Pentagon",
+    tree: { parent: [-1,0,0,2,3,3,5,6], roots: [0] },
+    hingeIdx: [-1,0,2,2,2,0,0,0],
+    starts: {
+      a: [
+      [[-57.5, 33.196], [-115, -66.397], [0, -66.397], [5.429, -8.96], [-23.942, 40.699]],
+      [[5.429, -8.96], [0, -66.397], [34.795, -58.618]],
+      [[44.349, 55.97], [0, 132.795], [-57.5, 33.196]],
+      [[91.104, -46.03], [101.858, -43.627], [44.349, 55.97], [32.36, 53.282]],
+      [[0, -66.397], [115, -66.397], [101.858, -43.627]],
+      [[32.36, 53.282], [23.579, -39.651], [34.795, -58.618], [91.104, -46.03]],
+      [[23.579, -39.651], [32.36, 53.282], [-5.79, 10.008]],
+      [[-5.79, 10.008], [32.36, 53.282], [-23.942, 40.699]],
+    ],
+      b: [
+      [[23.301, 30.339], [-54.548, -54.307], [57.681, -79.403], [75.513, -24.534], [57.687, 30.337]],
+      [[75.513, -24.534], [93.346, 30.334], [57.692, 30.335]],
+      [[-81.062, 30.34], [-54.548, -54.311], [23.301, 30.339]],
+      [[-57.694, -79.406], [-46.674, -79.407], [-81.062, 30.34], [-93.349, 30.332]],
+      [[57.697, -79.413], [-54.531, -54.317], [-46.674, -79.407]],
+      [[-93.349, 30.332], [-0.003, 30.328], [17.826, 43.277], [0, 98.153]],
+      [[-0.003, 30.328], [93.344, 30.324], [46.675, 64.236]],
+      [[46.675, 64.236], [0.006, 98.149], [17.827, 43.28]],
+    ],
+    },
+    steps: [
+      [
+        { k: 4, delta: 3.141593 },
+        { k: 2, delta: 3.141593 },
+        { k: 1, delta: 3.141593 },
+        { k: 3, delta: 3.141593 },
+        { k: 7, delta: 3.141593 },
+        { k: 6, delta: 3.141593 },
+        { k: 5, delta: -4.39823 },
+      ],
+      [
+        { k: 5, delta: 4.39823 },
+        { k: 6, delta: -3.141593 },
+        { k: 7, delta: -3.141593 },
+        { k: 3, delta: -3.141593 },
+        { k: 1, delta: -3.141593 },
+        { k: 2, delta: -3.141593 },
+        { k: 4, delta: -3.141593 },
+      ],
+    ],
+  },
+  {
+    id: "pent-sq", a: "Pentagon", b: "Square",
+    tree: { parent: [1,-1,1,2,3,3,5], roots: [1] },
+    hingeIdx: [0,-1,0,2,2,2,2],
+    starts: {
+      a: [
+      [[-93.381309, 30.23254], [-0.103586, 98.15321], [-11.086145, 64.230461], [-57.725006, 30.270126]],
+      [[-57.609274, -79.468522], [-93.381309, 30.23254], [-57.725006, 30.270126], [-2.869675, -21.790183]],
+      [[-57.725006, 30.270126], [-22.068838, 30.307712], [-11.086145, 64.230461], [-0.032065, 30.330967], [46.642625, 30.380316], [-2.869675, -21.790183]],
+      [[46.758439, -79.358333], [-8.096879, -27.29797], [46.642625, 30.380316], [93.317315, 30.429529], [57.77688, -79.346706]],
+      [[-57.609274, -79.468522], [-8.096879, -27.29797], [46.758439, -79.358333]],
+      [[-11.086145, 64.230461], [-0.103586, 98.15321], [93.317315, 30.429529], [-0.032065, 30.330967]],
+      [[-57.725006, 30.270126], [-22.068838, 30.307712], [-11.086145, 64.230461]],
+    ],
+      b: [
+      [[-93.381309, 30.23254], [-57.571371, -79.456107], [-86.447262, -58.538354], [-104.352231, -3.694031]],
+      [[-57.609274, -79.468522], [-93.381309, 30.23254], [-57.725006, 30.270126], [-2.869675, -21.790183]],
+      [[-57.725006, 30.270126], [-93.381174, 30.232987], [-104.364293, -3.689624], [-115.417948, 30.210009], [-162.092638, 30.161245], [-112.579684, 82.331123]],
+      [[-162.011796, -79.577435], [-216.85052, -27.499594], [-162.092638, 30.161245], [-115.417935, 30.195584], [-150.993352, -79.56932]],
+      [[-57.644157, -79.411391], [-107.128624, -131.608433], [-162.011796, -79.577435]],
+      [[-115.290232, -79.543057], [-150.946476, -79.584581], [-115.417935, 30.195584], [-86.468064, -58.551368]],
+      [[-57.597335, -79.411321], [-86.491564, -58.519043], [-115.290232, -79.543057]],
+    ],
+    },
+    steps: [
+      [
+        { k: 0, delta: 4.398576 },
+        { k: 6, delta: -2.514393 },
+        { k: 5, delta: -4.397803 },
+        { k: 3, delta: 3.141287 },
+        { k: 2, delta: 3.14158 },
+        { k: 6, delta: 3.143832 },
+        { k: 4, delta: 3.142447 },
+      ],
+      [
+        { k: 4, delta: -3.142447 },
+        { k: 6, delta: -3.143832 },
+        { k: 2, delta: -3.14158 },
+        { k: 3, delta: -3.141287 },
+        { k: 5, delta: 4.397803 },
+        { k: 6, delta: 2.514393 },
+        { k: 0, delta: -4.398576 },
+      ],
+    ],
+  },
+  {
+    id: "oct-square", a: "Octagon", b: "Square",
+    tree: { parent: [-1,0,1,2,3,4,5], roots: [0] },
+    hingeIdx: [-1,3,3,3,0,3,0],
+    starts: {
+      a: [
+      [[-44.333909, -20.179305], [-20.179328, 44.333882], [44.333909, 20.17935], [58.789543, -10.645713], [20.179328, -44.333886]],
+      [[44.333909, 20.17935], [58.790336, 58.790359], [83.142085, 34.43861], [58.789543, -10.645713]],
+      [[-58.790336, 58.790359], [-34.438588, 83.142107], [34.438588, 83.142107], [58.790336, 58.790359], [44.333909, 20.17935], [-20.179328, 44.333882]],
+      [[-58.790336, -58.790363], [-83.142085, -34.438565], [-83.142085, 34.43861], [-58.790336, 58.790359], [-20.179328, 44.333882]],
+      [[-58.790336, -58.790363], [-44.333909, -20.179305], [58.790336, -58.790363], [34.438588, -83.142112], [-34.438588, -83.142112]],
+      [[20.179328, -44.333886], [58.789543, -10.645713], [83.142085, -34.438565], [58.790336, -58.790363]],
+      [[58.789543, -10.645713], [83.142085, 34.43861], [83.142085, -34.438565]],
+    ],
+      b: [
+      [[-44.333909, -20.179305], [-20.179328, 44.333882], [44.333909, 20.17935], [58.789543, -10.645713], [20.179328, -44.333886]],
+      [[61.544917, -44.580323], [34.49161, -75.691685], [20.20061, -44.358274], [58.789543, -10.645713]],
+      [[-75.607666, -34.419857], [-44.257692, -20.165229], [20.236982, -44.341712], [34.49161, -75.691685], [7.402216, -106.771632], [-44.527739, -61.509297]],
+      [[-34.455491, 75.724252], [-20.16682, 44.38974], [-44.2732, -20.131169], [-75.607666, -34.419857], [-106.717014, -7.364208]],
+      [[-34.455491, 75.724252], [-7.363757, 106.802219], [75.640699, 34.444193], [44.289659, 20.191908], [-20.203208, 44.373212]],
+      [[106.72467, 7.359391], [58.748983, -10.639921], [44.292835, 20.18484], [75.640699, 34.444193]],
+      [[58.748983, -10.639921], [106.710629, 7.396792], [61.509966, -44.57402]],
+    ],
+    },
+    steps: [
+      [
+        { k: 4, delta: -3.142754 },
+        { k: 2, delta: -3.142753 },
+        { k: 1, delta: -3.49908 },
+        { k: 3, delta: -3.140506 },
+        { k: 6, delta: 2.784253 },
+        { k: 5, delta: -3.141369 },
+      ],
+      [
+        { k: 5, delta: 3.141369 },
+        { k: 6, delta: -2.784253 },
+        { k: 3, delta: 3.140506 },
+        { k: 1, delta: 3.49908 },
+        { k: 2, delta: 3.142753 },
+        { k: 4, delta: 3.142754 },
+      ],
+    ],
+  },
+  {
+    id: "square-tri-star", a: "Square", b: "Triangle",
+    tree: { parent: [-1,0,0,2,3,1,5,6], roots: [0] },
+    hingeIdx: [-1,2,0,1,1,0,3,2],
+    starts: {
+      a: [
+      [[0, 0], [-57.5, -99.592921], [0, -66.395281], [57.5, -99.592921], [57.5, -33.19764]],
+      [[57.5, -99.592921], [0, -66.395281], [-57.5, -99.592921]],
+      [[0, 0], [-57.5, -33.19764], [-57.5, -99.592921]],
+      [[-86.25, -49.796461], [-57.5, -99.592921], [-57.5, -33.19764], [0, 0], [-73.928571, 14.22756]],
+      [[73.928571, -14.22756], [0, 0], [57.5, -33.19764], [57.5, -99.592921]],
+      [[57.5, -99.592921], [-57.5, -99.592921], [0, -132.790562]],
+      [[45.178571, -163.616942], [57.5, -99.592921], [0, -132.790562], [-57.5, -99.592921], [-28.75, -149.389382]],
+      [[-86.25, -49.796461], [-102.678571, -135.161822], [-28.75, -149.389382]],
+    ],
+      b: [
+      [[0, 0], [-57.5, -99.592921], [0, -66.395281], [57.5, -99.592921], [57.5, -33.19764]],
+      [[57.5, -99.592921], [0, -66.395281], [-57.5, -99.592921]],
+      [[0, 0], [57.507649, 33.184389], [57.522949, 99.579668]],
+      [[86.261473, 49.776584], [57.522949, 99.579668], [57.507649, 33.184389], [0, 0], [73.92529, -14.244596]],
+      [[73.928564, -14.227597], [0, 0], [57.499983, -33.197669], [57.49995, -99.59295]],
+      [[57.5, -99.592921], [172.499997, -99.619502], [115.007672, -66.408571]],
+      [[69.836227, -35.57175], [57.5, -99.592921], [115.007672, -66.408571], [172.499997, -99.619502], [143.761508, -49.816397]],
+      [[86.261628, 49.776593], [69.832954, -35.588748], [143.761508, -49.816397]],
+    ],
+    },
+    steps: [
+      [
+        { k: 4, delta: 3.141823 },
+        { k: 7, delta: 3.141823 },
+        { k: 2, delta: -3.141823 },
+        { k: 5, delta: 3.141362 },
+      ],
+      [
+        { k: 5, delta: -3.141362 },
+        { k: 2, delta: 3.141823 },
+        { k: 7, delta: -3.141823 },
+        { k: 4, delta: -3.141823 },
+      ],
+    ],
+  },
+  {
+    id: "random-square", a: "Scramble", b: "Square",
+    tree: { parent: RANDOM_HINGINGS[0].parent.slice(), roots: [RANDOM_HINGINGS[0].root] },
+    hingeIdx: RANDOM_HINGINGS[0].hingeIdx.slice(),
+    starts: { a: RANDOM_SQUARE, b: RANDOM_SQUARE },
+    steps: [[], []],
+    randomLevel: RANDOM_HINGINGS,
+  },
+];
+
+const PIECE_COLORS = [
+  "#e2725b", "#f0b429", "#7cb342", "#26a69a",
+  "#5c6bc0", "#ab47bc", "#ec407a", "#a1887f",
+];
+const MIN_SWING = 0.22;          // ignore tweaks smaller than ~12°
+const MAX_SWING = 1.5 * PI;      // never spin further than 270° in one tap
+// Collision tolerance in world units. It is normally tiny, but a level traced
+// from a printed drawing can set pair.collisionEps to absorb the drawing error.
+let COLLISION_EPS = 0.04;
+const BEST_STORE = "hinge-puzzle-best-v1";
+const REDUCED_MOTION = !!(window.matchMedia &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+/* ----------------------------- maths ----------------------------- */
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1];
+const cross = (a, b) => a[0] * b[1] - a[1] * b[0];
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+const len = a => Math.hypot(a[0], a[1]);
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+function wrapPi(a) {
+  a = (a + PI) % TAU;
+  if (a < 0) a += TAU;
+  return a - PI;
+}
+function polyArea(pts) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    a += p[0] * q[1] - q[0] * p[1];
+  }
+  return a / 2;
+}
+function centroid(pts) {
+  return pts.reduce((s, p) => [s[0] + p[0] / pts.length, s[1] + p[1] / pts.length], [0, 0]);
+}
+function convexHull(points) {
+  const pts = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (pts.length < 3) return pts;
+  const turn = (o, a, b) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [], upper = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && turn(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i];
+    while (upper.length >= 2 && turn(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+function simplifyHull(hull, tol) {
+  const pts = hull.slice();
+  let changed = true;
+  while (changed && pts.length > 3) {
+    changed = false;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[(i + pts.length - 1) % pts.length];
+      const b = pts[i];
+      const c = pts[(i + 1) % pts.length];
+      const chord = sub(c, a);
+      const L = len(chord);
+      const perp = L > 1e-9 ? Math.abs(cross(sub(b, a), chord)) / L : 0;
+      if (perp < tol) { pts.splice(i, 1); changed = true; break; }
+    }
+  }
+  return pts;
+}
+function pointInPoly(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1];
+    const xj = poly[j][0], yj = poly[j][1];
+    if ((yi > p[1]) !== (yj > p[1]) &&
+        p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function distToSeg(p, a, b) {
+  const v = sub(b, a), w = sub(p, a);
+  const L2 = dot(v, v);
+  if (L2 < 1e-12) return len(w);
+  const t = clamp(dot(w, v) / L2, 0, 1);
+  return len(sub(p, [a[0] + v[0] * t, a[1] + v[1] * t]));
+}
+function distToPoly(p, poly) {
+  let d = Infinity;
+  for (let i = 0; i < poly.length; i++)
+    d = Math.min(d, distToSeg(p, poly[i], poly[(i + 1) % poly.length]));
+  return d;
+}
+function isConvexPoly(poly) {
+  let sign = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length], c = poly[(i + 2) % poly.length];
+    const cr = cross(sub(b, a), sub(c, b));
+    if (Math.abs(cr) < 1e-9) continue;
+    const s = Math.sign(cr);
+    if (!sign) sign = s;
+    else if (s !== sign) return false;
+  }
+  return true;
+}
+let PIECE_CONVEX = [];
+// Allocation-free SAT (same EPS as satOverlap) for the hot path.
+function satFast(A, B) {
+  const EPS = COLLISION_EPS;
+  for (let pass = 0; pass < 2; pass++) {
+    const poly = pass ? B : A;
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i], q = poly[(i + 1) % poly.length];
+      const ex = q[0] - p[0], ey = q[1] - p[1];
+      const L = Math.hypot(ex, ey);
+      if (L < 1e-9) continue;
+      const ax = -ey / L, ay = ex / L;
+      let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+      for (let v = 0; v < A.length; v++) {
+        const d = A[v][0] * ax + A[v][1] * ay;
+        if (d < a0) a0 = d;
+        if (d > a1) a1 = d;
+      }
+      for (let v = 0; v < B.length; v++) {
+        const d = B[v][0] * ax + B[v][1] * ay;
+        if (d < b0) b0 = d;
+        if (d > b1) b1 = d;
+      }
+      if (a1 <= b0 + EPS || b1 <= a0 + EPS) return false;
+    }
+  }
+  return true;
+}
+function projectPoly(poly, axis) {
+  let lo = Infinity, hi = -Infinity;
+  for (const p of poly) {
+    const d = dot(p, axis);
+    if (d < lo) lo = d;
+    if (d > hi) hi = d;
+  }
+  return [lo, hi];
+}
+function satOverlap(A, B) {
+  const EPS = COLLISION_EPS;
+  for (const poly of [A, B]) {
+    for (let i = 0; i < poly.length; i++) {
+      const e = sub(poly[(i + 1) % poly.length], poly[i]);
+      const L = len(e);
+      if (L < 1e-9) continue;
+      const axis = [-e[1] / L, e[0] / L];
+      const [a0, a1] = projectPoly(A, axis);
+      const [b0, b1] = projectPoly(B, axis);
+      if (a1 <= b0 + EPS || b1 <= a0 + EPS) return false;
+    }
+  }
+  return true;
+}
+function segCrossInterior(a, b, c, d) {
+  const r = sub(b, a), s = sub(d, c);
+  const den = cross(r, s);
+  if (Math.abs(den) < 1e-12 * (len(r) * len(s) + 1)) return false;
+  const t = cross(sub(c, a), s) / den;
+  const u = cross(sub(c, a), r) / den;
+  const eps = 1e-4;
+  return t > eps && t < 1 - eps && u > eps && u < 1 - eps;
+}
+function polysOverlap(A, B) {
+  if (isConvexPoly(A) && isConvexPoly(B)) return satOverlap(A, B);
+  for (const p of A) if (pointInPoly(p, B) && distToPoly(p, B) > Math.max(1e-4, COLLISION_EPS)) return true;
+  for (const p of B) if (pointInPoly(p, A) && distToPoly(p, A) > Math.max(1e-4, COLLISION_EPS)) return true;
+  for (let i = 0; i < A.length; i++) {
+    const a = A[i], b = A[(i + 1) % A.length];
+    for (let j = 0; j < B.length; j++) {
+      const c = B[j], d = B[(j + 1) % B.length];
+      if (segCrossInterior(a, b, c, d)) return true;
+    }
+  }
+  return false;
+}
+function rotatePoint(p, o, a) {
+  const c = Math.cos(a), s = Math.sin(a);
+  const x = p[0] - o[0], y = p[1] - o[1];
+  return [o[0] + x * c - y * s, o[1] + x * s + y * c];
+}
+
+/* ------------------------- board state -------------------------- */
+let pairIndex = 0;
+let lastRandomRoll = null;      // remembered random scramble, so Restart keeps it
+let direction = 0;              // 0 = a → b, 1 = b → a
+let level = null;
+let pieces = [];
+let tree = { parent: [], roots: [] };
+let selected = -1;
+let options = [];
+let history = [];
+let moveLog = [];              // the player's own swings this attempt (for replay)
+let replay = null;             // { steps, i } while replaying the solution
+let moves = 0;
+let solutionIdx = 0;
+let pathValid = true;
+let solved = false;
+// Piece pairs allowed to pass over each other on a specific level (used by
+// the applet's hexagram ⇄ triangle dissection). Empty for every other level.
+let PASS_PAIRS = new Set();
+function passPair(a, b) { return PASS_PAIRS.has(a + "," + b); }
+let anim = null;
+let hint = null;               // { k, dir, until }
+let hintBusy = false;
+let hintSearch = null;         // chunked BFS state while a hint is computed
+let hoverOption = -1;
+let optionViews = [];
+
+const cam = { x: 0, y: 0, zoom: 2.4, rot: 0 };
+let viewRot = 0;                // user-chosen board rotation (multiples of 90°)
+const camGoal = { x: 0, y: 0, zoom: 2.4, rot: 0 };
+const view = { w: 0, h: 0, padTop: 90, padBottom: 96, padX: 26, cx: 0, cy: 0 };
+const clonePieces = list => list.map(p => ({ pts: p.pts.map(q => [q[0], q[1]]) }));
+
+/* ------------------------- tree helpers ------------------------- */
+// Subtree lists are rebuilt for every level (each dissection has its own tree).
+let SUBTREES = [];
+let SUBTREE_MASK = [];
+function buildSubtrees(parent, n) {
+  SUBTREES = [];
+  for (let k = 0; k < n; k++) {
+    const s = [], stack = [k];
+    while (stack.length) {
+      const u = stack.pop();
+      s.push(u);
+      for (let i = 0; i < n; i++) if (parent[i] === u) stack.push(i);
+    }
+    SUBTREES.push(s);
+  }
+  SUBTREE_MASK = SUBTREES.map(list => {
+    let m = 0;
+    for (const i of list) m |= 1 << i;
+    return m;
+  });
+}
+function subtreeIndices(k) {
+  return SUBTREES[k] || [];
+}
+function rotateState(src, k, angle, pivot) {
+  const mask = SUBTREE_MASK[k] || 0;
+  return src.map((p, i) => (mask & (1 << i))
+    ? { pts: p.pts.map(q => rotatePoint(q, pivot, angle)) }
+    : p);
+}
+// Rotate an arbitrary group of pieces. The game normally swings a whole
+// subtree, but the applet's model moves the *smaller* side of a hinge, so a
+// group can also be "everything except this subtree".
+function rotateSet(src, ids, angle, pivot) {
+  const set = new Set(ids);
+  return src.map((p, i) => set.has(i)
+    ? { pts: p.pts.map(q => rotatePoint(q, pivot, angle)) }
+    : p);
+}
+// The group the player tapped is the group that swings: piece k and everything
+// behind it in the hinge tree turn about k's own pin. Keeping the tapped block
+// in the moving group makes the handles match what the player pressed (the
+// relative motion is the same as turning the other side of the hinge).
+function visualFor(k, delta) {
+  return { moving: subtreeIndices(k), delta };
+}
+function collidesMove(k, list) {
+  const mask = SUBTREE_MASK[k] || 0;
+  for (let i = 0; i < list.length; i++) {
+    if (!(mask & (1 << i))) continue;
+    for (let j = 0; j < list.length; j++) {
+      if (mask & (1 << j)) continue;
+      if (passPair(i, j)) continue;
+      if (polysOverlap(list[i].pts, list[j].pts)) return true;
+    }
+  }
+  return false;
+}
+// Collision check for a rotation of piece k's subtree, without allocating a
+// whole new board each step. Used by the reach scan and the hint search.
+function maxReachAt(k, pivot) {
+  const moving = SUBTREES[k] || [];
+  const mask = SUBTREE_MASK[k] || 0;
+  const stationary = [];
+  for (let i = 0; i < pieces.length; i++) if (!(mask & (1 << i))) stationary.push(i);
+  const buf = moving.map(i => pieces[i].pts.map(() => [0, 0]));
+  const hit = angle => {
+    const c = Math.cos(angle), s = Math.sin(angle);
+    const px = pivot[0], py = pivot[1];
+    for (let m = 0; m < moving.length; m++) {
+      const src = pieces[moving[m]].pts, dst = buf[m];
+      for (let v = 0; v < src.length; v++) {
+        const x = src[v][0] - px, y = src[v][1] - py;
+        dst[v][0] = px + x * c - y * s;
+        dst[v][1] = py + x * s + y * c;
+      }
+    }
+    for (let m = 0; m < moving.length; m++) {
+      const A = buf[m], ai = moving[m];
+      for (let si = 0; si < stationary.length; si++) {
+        const j = stationary[si];
+        if (passPair(ai, j)) continue;
+        if (PIECE_CONVEX[ai] && PIECE_CONVEX[j]) {
+          if (satFast(A, pieces[j].pts)) return true;
+        } else if (polysOverlap(A, pieces[j].pts)) return true;
+      }
+    }
+    return false;
+  };
+  const STEP = PI / 90;
+  const limit = dir => {
+    let good = 0, bad = null;
+    for (let a = STEP; a <= MAX_SWING + 1e-9; a += STEP) {
+      const t = Math.min(a, MAX_SWING);
+      if (hit(dir * t)) { bad = t; break; }
+      good = t;
+    }
+    if (bad == null) return MAX_SWING;
+    if (good <= 1e-9) return 0;
+    for (let i = 0; i < 24; i++) {
+      const mid = (good + bad) / 2;
+      if (hit(dir * mid)) bad = mid;
+      else good = mid;
+    }
+    return Math.max(0, good - 1e-6);
+  };
+  return { ccw: limit(1), cw: limit(-1) };
+}
+
+/* --------------------------- options ---------------------------- */
+// Each piece is physically hinged to its parent at one fixed joint, so a
+// piece can only swing about that hinge (clockwise or anticlockwise), and
+// everything behind it in the tree travels with it.
+// Most hinges sit exactly on a piece vertex. A traced dissection can have its
+// hinge a fraction of a millimetre inside an edge; those are stored as
+// barycentric weights over three of the piece's vertices, so they rotate
+// rigidly with the piece just like a vertex hinge.
+function pivotFor(k, list = pieces) {
+  if (!list[k]) return null;
+  const w = level.hingeW && level.hingeW[k];
+  const tri = level.hingeTriple && level.hingeTriple[k];
+  if (w && tri) {
+    const p = list[k].pts;
+    const a = p[tri[0]], b = p[tri[1]], c = p[tri[2]];
+    return [
+      w[0] * a[0] + w[1] * b[0] + w[2] * c[0],
+      w[0] * a[1] + w[1] * b[1] + w[2] * c[1],
+    ];
+  }
+  const hi = level.hingeIdx ? level.hingeIdx[k] : -1;
+  return hi >= 0 ? list[k].pts[hi] : null;
+}
+function optionsFor(k) {
+  const pivot = pivotFor(k);
+  if (!pivot) return [];
+  const reach = maxReachAt(k, pivot);
+  const out = [];
+  for (const dir of [1, -1]) {
+    const angle = dir > 0 ? reach.ccw : reach.cw;
+    if (angle < MIN_SWING) continue;
+    const delta = dir * angle;
+    const vis = visualFor(k, delta);
+    out.push({
+      k, pivot, dir, delta, angle,
+      moving: vis.moving, visDelta: vis.delta, visDir: Math.sign(vis.delta),
+    });
+  }
+  out.sort((a, b) => b.angle - a.angle);
+  return out;
+}
+// What can the player do with the piece they tapped? Normally that piece's own
+// hinge. If that hinge is pinched, offer the swings of the larger groups that
+// carry it. If the piece is the tree's anchor (the one piece with no hinge),
+// offer the swings of the rest of the board about a child hinge — the only way
+// the anchor itself can turn. Either way the moving group contains the piece
+// the player pressed.
+function optionsForTap(pi) {
+  const own = optionsFor(pi);
+  if (own.length) return own;
+  const out = [];
+  for (let a = tree.parent[pi]; a >= 0; a = tree.parent[a]) {
+    for (const o of optionsFor(a))
+      out.push({ ...o, moving: subtreeIndices(a), visDelta: o.delta });
+  }
+  if (tree.parent[pi] < 0) {
+    // The anchor has no hinge of its own; turning the rest of the board about
+    // any hinge carries it. Use every available hinge, not just the first ring.
+    for (let c = 0; c < pieces.length; c++) {
+      if (c === pi) continue;
+      const inSub = new Set(subtreeIndices(c));
+      let comp = null;
+      for (const o of optionsFor(c)) {
+        if (!comp) {
+          comp = [];
+          for (let i = 0; i < pieces.length; i++) if (!inSub.has(i)) comp.push(i);
+        }
+        out.push({ ...o, moving: comp, visDelta: -o.delta });
+      }
+    }
+  }
+  return out;
+}
+
+// Per-level alternative hinging for the REVERSE direction (b → a).
+//
+// The forward direction always uses the pair's own tree / hingeIdx / steps[0].
+// For the reverse we deliberately re-hinge the same pieces: a different
+// spanning tree where one exists (so the hinge points themselves move), or a
+// re-rooted tree when it does not.  That makes the reverse a genuinely
+// different puzzle instead of the forward solution played backwards.
+// `hingeIdx` here indexes the vertices of the b-pose pieces, because the
+// reverse starts from `starts.b`.
+const REVERSE_OVERRIDES = {
+  "tri-square": {
+    tree: { parent: [2, 0, -1, 1], roots: [2] },
+    hingeIdx: [1, 2, -1, 1],
+    steps: [
+      { k: 1, delta: -3.142129 }, { k: 0, delta: -3.142221 },
+      { k: 3, delta: -3.133551 },
+    ],
+  },
+  "tri-hex": {
+    tree: { parent: [-1, 0, 5, 4, 5, 1], roots: [0] },
+    hingeIdx: [-1, 0, 2, 2, 3, 0],
+    steps: [
+      { k: 4, delta: -3.142465 }, { k: 5, delta: -4.188349 },
+      { k: 1, delta: 3.142018 }, { k: 2, delta: 3.141608 },
+      { k: 3, delta: -3.137983 },
+    ],
+  },
+  "sq-hex": {
+    tree: { parent: [-1, 0, 0, 1, 5, 0], roots: [0] },
+    hingeIdx: [-1, 0, 2, 0, 0, 0],
+    steps: [
+      { k: 1, delta: -3.142454 }, { k: 3, delta: -3.141088 },
+      { k: 5, delta: 3.140375 }, { k: 4, delta: -3.141007 },
+      { k: 2, delta: 3.141942 },
+    ],
+  },
+  "tri-pent": {
+    tree: { parent: [-1, 0, 0, 2, 0, 3, 5, 6], roots: [0] },
+    hingeIdx: [-1, 0, 2, 2, 0, 0, 0, 0],
+    steps: [
+      { k: 5, delta: 4.398574 }, { k: 1, delta: -3.142263 },
+      { k: 6, delta: -3.14202 }, { k: 7, delta: -3.141722 },
+      { k: 3, delta: -3.14227 }, { k: 2, delta: -3.141972 },
+      { k: 4, delta: 3.141343 },
+    ],
+  },
+  "pent-sq": {
+    tree: { parent: [1, 4, 1, 2, -1, 3, 5], roots: [4] },
+    hingeIdx: [0, 0, 0, 2, -1, 2, 2],
+    steps: [
+      { k: 1, delta: -3.142511 }, { k: 2, delta: -3.141792 },
+      { k: 3, delta: -3.140166 }, { k: 6, delta: -3.143832 },
+      { k: 5, delta: 4.396932 }, { k: 6, delta: 2.514597 },
+      { k: 0, delta: -4.39867 },
+    ],
+  },
+  "oct-square": {
+    tree: { parent: [1, -1, 1, 2, 3, 4, 5], roots: [1] },
+    hingeIdx: [3, -1, 3, 3, 0, 3, 0],
+    steps: [
+      { k: 5, delta: 3.141878 }, { k: 3, delta: 3.141475 },
+      { k: 0, delta: -3.500254 }, { k: 2, delta: 3.141744 },
+      { k: 6, delta: -2.785427 }, { k: 4, delta: 3.1422 },
+    ],
+  },
+  "square-tri-star": {
+    tree: { parent: [5, -1, 0, 0, 3, 1, 0, 6], roots: [1] },
+    hingeIdx: [3, -1, 0, 3, 1, 0, 1, 2],
+    steps: [
+      { k: 2, delta: 3.14188 }, { k: 5, delta: -3.141418 },
+      { k: 0, delta: 3.141418 }, { k: 6, delta: -3.141418 },
+      { k: 3, delta: 3.14188 }, { k: 4, delta: -3.141895 },
+      { k: 7, delta: -3.141879 },
+    ],
+  },
+};
+
+/* -------------------------- level flow -------------------------- */
+// idx = pair index, dir = 0 (a → b) or 1 (b → a).
+// randomMode: "new" deals a fresh scramble (and hinging); "keep" restarts the
+// one currently in play.
+function loadLevel(idx, dir = 0, instantCamera = true, randomMode = "new") {
+  pairIndex = clamp(idx, 0, PAIRS.length - 1);
+  direction = dir ? 1 : 0;
+  const pair = PAIRS[pairIndex];
+  if (pair.randomLevel) direction = 0;   // the random level is one-way; the card shuffles
+  const rev = direction ? REVERSE_OVERRIDES[pair.id] : null;
+  const from = direction ? pair.b : pair.a;
+  const to = direction ? pair.a : pair.b;
+
+  // Random level: deal a shuffled start from one of the defined hingings.
+  let roll = null;
+  if (pair.randomLevel && pair.randomLevel.length) {
+    if (randomMode !== "keep" || !lastRandomRoll || lastRandomRoll.pairId !== pair.id) {
+      const pool = [];
+      for (const h of pair.randomLevel) for (const e of h.entries) pool.push({ h, e });
+      let pick = pool[Math.floor(Math.random() * pool.length)];
+      if (pool.length > 1 && lastRandomRoll && lastRandomRoll.entry === pick.e)
+        pick = pool[(pool.indexOf(pick) + 1) % pool.length];
+      lastRandomRoll = { pairId: pair.id, hinging: pick.h, entry: pick.e };
+    }
+    roll = lastRandomRoll;
+  }
+
+  level = {
+    id: pair.id + (direction ? "-b" : "-a"),
+    title: roll ? "Scramble → Square" : from + " → " + to,
+    from: roll ? "Scramble" : from,
+    to: roll ? "Square" : to,
+    start: roll ? roll.entry.start : pair.starts[direction ? "b" : "a"],
+    target: roll ? SHAPE.Square : SHAPE[to],
+    solution: roll ? roll.entry.solution : (rev ? rev.steps : pair.steps[direction]),
+    tree: roll ? { parent: roll.hinging.parent.slice(), roots: [roll.hinging.root] }
+               : (rev ? rev.tree : pair.tree),
+    hingeIdx: roll ? roll.hinging.hingeIdx.slice() : (rev ? rev.hingeIdx : pair.hingeIdx),
+    hingeW: roll ? null : (rev ? null : pair.hingeW),
+    hingeTriple: roll ? null : (rev ? null : pair.hingeTriple),
+    passThrough: pair.passThrough || [],
+    collisionEps: roll ? 0.04 : (pair.collisionEps || 0.04),
+    random: !!roll,
+    hingingName: roll ? roll.hinging.name : "",
+    par: roll ? roll.entry.d : 0,
+  };
+  PASS_PAIRS = new Set();
+  for (const [a, b] of level.passThrough) {
+    PASS_PAIRS.add(a + "," + b);
+    PASS_PAIRS.add(b + "," + a);
+  }
+  COLLISION_EPS = level.collisionEps;
+  // Present the starting silhouette the same way up as its corner chip. (The
+  // random level's scramble has no canonical source outline, so it is left as
+  // dealt.) Rotating the whole start pose is a rigid motion: every stored
+  // swing is relative, so the puzzle is unchanged.
+  level.start = level.start.map(p => p.map(q => [q[0], q[1]]));
+  if (!roll && SHAPE[level.from]) {
+    const startHull = simplifyHull(convexHull(level.start.flatMap(p => p)), 1.2);
+    if (startHull.length >= 3) {
+      const d = targetAlignment(startHull, SHAPE[level.from]);
+      const c = centroid(startHull);
+      level.start = level.start.map(p => p.map(q => rotatePoint(q, c, d)));
+    }
+  }
+  pieces = level.start.map(pts => ({ pts: pts.map(p => [p[0], p[1]]) }));
+  PIECE_CONVEX = pieces.map(p => isConvexPoly(p.pts));
+  tree = { parent: level.tree.parent.slice(), roots: level.tree.roots.slice() };
+  buildSubtrees(tree.parent, pieces.length);
+  selected = -1; options = []; optionViews = [];
+  history = []; moveLog = []; moves = 0; solutionIdx = 0; pathValid = true;
+  solved = false; anim = null; hint = null; hoverOption = -1; replay = null;
+  hintSearch = null; hintBusy = false;
+  closeLevelMenu();
+  hideOverlay();
+  ui.toast.classList.remove("show");
+  showTip();
+  if (level.random) {
+    ui.levelCard.title = "Shuffle — deal a new random scramble";
+    ui.levelCard.setAttribute("aria-label", "Shuffle — new random scramble");
+    ui.tip.textContent = level.hingingName + " hinging · shortest route " +
+      level.par + " swings";
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(hideTip, 4200);
+  } else {
+    ui.levelCard.title = "Switch direction — play it the other way (S)";
+    ui.levelCard.setAttribute("aria-label", "Switch direction");
+  }
+  updateHUD();
+  fitAll();
+  if (instantCamera) { cam.x = camGoal.x; cam.y = camGoal.y; cam.zoom = camGoal.zoom; cam.rot = camGoal.rot; }
+  canvas.setAttribute("aria-label",
+    "Level " + (pairIndex + 1) + " of " + PAIRS.length + ": " + level.title + ". Tap a piece, then tap an arrow to swing it.");
+  requestDraw();
+}
+function swapDirection() {
+  if (anim || replay) return;
+  if (PAIRS[pairIndex].randomLevel) {
+    loadLevel(pairIndex, 0, true, "new");
+    toast("Shuffled — new scramble");
+    return;
+  }
+  loadLevel(pairIndex, 1 - direction);
+  toast(level.title);
+}
+function updateHUD() {
+  ui.eyebrow.textContent = "Level " + (pairIndex + 1) + " of " + PAIRS.length;
+  ui.title.textContent = level.title;
+  ui.moveCount.textContent = String(moves);
+  ui.targetName.textContent = level.to;
+  ui.undo.disabled = history.length === 0 || !!anim || !!replay;
+  ui.hint.disabled = solved || !!anim || !!replay || hintBusy;
+  ui.reset.disabled = !!anim;
+  ui.levelPill.textContent = (pairIndex + 1) + " / " + PAIRS.length;
+  ui.levelBtn.setAttribute("aria-label", "Choose a level — level " + (pairIndex + 1) + " of " + PAIRS.length);
+  ui.levelBtn.setAttribute("aria-expanded", String(!ui.levelMenu.hidden));
+  if (!ui.levelMenu.hidden) renderLevelMenu();
+  // target silhouette
+  const c = centroid(level.target);
+  const bb = boundsOf([level.target]);
+  const s = 15 / Math.max(bb.w, bb.h);
+  ui.targetPoly.setAttribute("points",
+    level.target.map(p => ((p[0] - c[0]) * s) + "," + (-(p[1] - c[1]) * s)).join(" "));
+}
+
+/* --------------------------- view/camera ------------------------ */
+function screenCenter() {
+  return { cx: view.w / 2, cy: (view.padTop + (view.h - view.padBottom)) / 2 };
+}
+function toScreen(p) {
+  const { cx, cy } = screenCenter();
+  const c = Math.cos(cam.rot), s = Math.sin(cam.rot);
+  const dx = p[0] - cam.x, dy = p[1] - cam.y;
+  return [cx + (dx * c - dy * s) * cam.zoom, cy - (dx * s + dy * c) * cam.zoom];
+}
+function toWorld(q) {
+  const { cx, cy } = screenCenter();
+  const c = Math.cos(cam.rot), s = Math.sin(cam.rot);
+  const X = (q[0] - cx) / cam.zoom, Y = -(q[1] - cy) / cam.zoom;
+  return [cam.x + X * c + Y * s, cam.y - X * s + Y * c];
+}
+function boundsOf(list) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const poly of list) for (const p of poly) {
+    if (p[0] < x0) x0 = p[0];
+    if (p[0] > x1) x1 = p[0];
+    if (p[1] < y0) y0 = p[1];
+    if (p[1] > y1) y1 = p[1];
+  }
+  return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+}
+function unionBounds(a, b) {
+  const x0 = Math.min(a.x0, b.x0), y0 = Math.min(a.y0, b.y0);
+  const x1 = Math.max(a.x1, b.x1), y1 = Math.max(a.y1, b.y1);
+  return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+}
+// Width/height of the board's bounding box once the view rotation is applied.
+function rotatedExtent(bb) {
+  const c = Math.abs(Math.cos(viewRot)), s = Math.abs(Math.sin(viewRot));
+  return { w: bb.w * c + bb.h * s, h: bb.w * s + bb.h * c };
+}
+function fitAll() {
+  const bb = boundsOf(pieces.map(p => p.pts));
+  const vw = Math.max(120, view.w - view.padX * 2);
+  const vh = Math.max(120, view.h - view.padTop - view.padBottom);
+  const ext = rotatedExtent(bb);
+  const zoom = Math.min(vw / Math.max(1, ext.w), vh / Math.max(1, ext.h)) * 0.94;
+  camGoal.x = bb.cx; camGoal.y = bb.cy; camGoal.zoom = zoom; camGoal.rot = viewRot;
+}
+function fitZoom() {
+  const bb = boundsOf(pieces.map(p => p.pts));
+  const vw = Math.max(120, view.w - view.padX * 2);
+  const vh = Math.max(120, view.h - view.padTop - view.padBottom);
+  const ext = rotatedExtent(bb);
+  return Math.min(vw / Math.max(1, ext.w), vh / Math.max(1, ext.h)) * 0.94;
+}
+// During a swing the camera simply pulls back so the whole board is visible —
+// no rotation. When the swing lands it eases back to the normal framing.
+function frameSwing() {
+  const base = anim ? anim.base : pieces;
+  const end = anim ? rotateSet(anim.base, anim.moving || subtreeIndices(anim.k), anim.delta, anim.pivot) : base;
+  const bb = unionBounds(
+    boundsOf(base.map(p => p.pts)),
+    boundsOf(end.map(p => p.pts)),
+  );
+  const vw = Math.max(120, view.w - view.padX * 2);
+  const vh = Math.max(120, view.h - view.padTop - view.padBottom);
+  const ext = rotatedExtent(bb);
+  camGoal.x = bb.cx;
+  camGoal.y = bb.cy;
+  camGoal.zoom = Math.min(vw / Math.max(1, ext.w), vh / Math.max(1, ext.h))
+    * (REDUCED_MOTION ? 0.94 : 0.8);
+  camGoal.rot = viewRot;
+}
+// The finished shape must be shown the same way up as the target chip. Find
+// the rotation that maps the assembled hull onto the canonical target: match
+// the vertex directions about their centroids, then use their median offset
+// (robust to the odd stray vertex from the hull simplification).
+function targetAlignment(hull, target) {
+  const n = hull.length;
+  if (n === target.length && n >= 3) {
+    const cH = centroid(hull), cT = centroid(target);
+    const ha = hull.map(p => Math.atan2(p[1] - cH[1], p[0] - cH[0]));
+    const ta = target.map(p => Math.atan2(p[1] - cT[1], p[0] - cT[0]));
+    let best = null;
+    for (let rev = 0; rev < 2; rev++) {
+      for (let off = 0; off < n; off++) {
+        const diffs = [];
+        let cost = 0;
+        for (let i = 0; i < n; i++) {
+          const j = rev ? (off - i + n * 2) % n : (i + off) % n;
+          const d = wrapPi(ta[i] - ha[j]);
+          diffs.push(d);
+          cost += d * d;
+        }
+        diffs.sort((a, b) => a - b);
+        if (!best || cost < best.cost) best = { cost, d: diffs[n >> 1] };
+      }
+    }
+    return best.d;
+  }
+  // Fallback: match edge directions by support (shapes with different vertex
+  // counts, e.g. a stray notch merged into the hull).
+  const angleOf = (P, i) => {
+    const q = P[(i + 1) % P.length];
+    return Math.atan2(q[1] - P[i][1], q[0] - P[i][0]);
+  };
+  let best = 0, bestScore = -Infinity;
+  for (let i = 0; i < target.length; i++) {
+    const th = angleOf(target, i);
+    for (let j = 0; j < hull.length; j++) {
+      const d = wrapPi(th - angleOf(hull, j));
+      let score = 0;
+      for (let a = 0; a < target.length; a++) {
+        let m = Infinity;
+        for (let b = 0; b < hull.length; b++) m = Math.min(m, Math.abs(wrapPi(angleOf(target, a) - d - angleOf(hull, b))));
+        if (m < 0.1) score++;
+      }
+      if (score > bestScore) { bestScore = score; best = d; }
+    }
+  }
+  return best;
+}
+function frameSolved() {
+  const bb = boundsOf(pieces.map(p => p.pts));
+  const vw = Math.max(120, view.w - view.padX * 2);
+  const vh = Math.max(120, view.h - view.padTop - view.padBottom);
+  const ext = rotatedExtent(bb);
+  camGoal.zoom = Math.min(vw / Math.max(1, ext.w), vh / Math.max(1, ext.h)) * 0.84;
+  camGoal.x = bb.cx; camGoal.y = bb.cy;
+  const hull = simplifyHull(convexHull(pieces.flatMap(p => p.pts)), 1.2);
+  if (hull.length >= 3) camGoal.rot = wrapPi(targetAlignment(hull, level.target));
+}
+
+/* --------------------------- rendering -------------------------- */
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+let dpr = 1, rafId = 0, lastTime = 0;
+
+const ui = {
+  eyebrow: document.getElementById("levelEyebrow"),
+  title: document.getElementById("levelTitle"),
+  moveCount: document.getElementById("moveCount"),
+  targetName: document.getElementById("targetName"),
+  targetPoly: document.getElementById("targetPoly"),
+  undo: document.getElementById("undoBtn"),
+  hint: document.getElementById("hintBtn"),
+  reset: document.getElementById("resetBtn"),
+  levelBtn: document.getElementById("levelBtn"),
+  levelCard: document.getElementById("levelCard"),
+  levelPill: document.getElementById("levelPill"),
+  levelMenu: document.getElementById("levelMenu"),
+  lmList: document.getElementById("lmList"),
+  tip: document.getElementById("tip"),
+  toast: document.getElementById("toast"),
+  overlay: document.getElementById("overlay"),
+  winTitle: document.getElementById("winTitle"),
+  winSub: document.getElementById("winSub"),
+  winNext: document.getElementById("winNext"),
+  winReplay: document.getElementById("winReplay"),
+  winRestart: document.getElementById("winRestart"),
+  rotate: document.getElementById("rotateBtn"),
+  info: document.getElementById("infoBtn"),
+  infoOverlay: document.getElementById("infoOverlay"),
+  infoClose: document.getElementById("infoClose"),
+  theme: document.getElementById("themeBtn"),
+};
+
+function resize() {
+  refreshTheme();
+  dpr = Math.min(2.5, window.devicePixelRatio || 1);
+  view.w = window.innerWidth;
+  view.h = window.innerHeight;
+  canvas.width = Math.round(view.w * dpr);
+  canvas.height = Math.round(view.h * dpr);
+  canvas.style.width = view.w + "px";
+  canvas.style.height = view.h + "px";
+  const topEl = document.querySelector(".topbar");
+  const botEl = document.querySelector(".bottombar");
+  view.padTop = (topEl ? topEl.offsetHeight : 60) + 26;
+  view.padBottom = (botEl ? botEl.offsetHeight : 60) + 30;
+  view.padX = view.w < 620 ? 16 : 28;
+  if (!pieces.length) { requestDraw(); return; }
+  if (!anim) {
+    fitAll();
+    if (!history.length) {
+      cam.x = camGoal.x; cam.y = camGoal.y; cam.zoom = camGoal.zoom; cam.rot = camGoal.rot;
+    }
+  }
+  requestDraw();
+}
+
+function currentPieces() {
+  if (!anim) return pieces;
+  const t = clamp((now - anim.t0) / anim.dur, 0, 1);
+  const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  return rotateSet(anim.base, anim.moving || subtreeIndices(anim.k), anim.delta * e, anim.pivot);
+}
+
+let now = 0;
+function requestDraw() {
+  if (rafId) return;
+  rafId = requestAnimationFrame(tick);
+}
+function tick(ts) {
+  rafId = 0;
+  const dt = lastTime ? Math.min(48, ts - lastTime) : 16;
+  lastTime = ts;
+  now = ts;
+
+  // camera easing
+  const k = 1 - Math.exp(-dt / 110);
+  cam.x += (camGoal.x - cam.x) * k;
+  cam.y += (camGoal.y - cam.y) * k;
+  cam.zoom += (camGoal.zoom - cam.zoom) * k;
+  const dRot = wrapPi(camGoal.rot - cam.rot);
+  cam.rot = wrapPi(cam.rot + dRot * k);
+
+  // swing animation
+  if (anim && now - anim.t0 >= anim.dur) {
+    finishSwing();
+  }
+
+  // hint pulse expiry
+  if (hint && now > hint.until) hint = null;
+
+  draw();
+
+  const moving = Math.abs(camGoal.x - cam.x) > 0.05 || Math.abs(camGoal.y - cam.y) > 0.05 ||
+    Math.abs(camGoal.zoom - cam.zoom) > 0.002 || Math.abs(wrapPi(camGoal.rot - cam.rot)) > 0.002;
+  if (anim || moving || hint) requestDraw();
+}
+
+function draw() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, view.w, view.h);
+  const list = currentPieces();
+
+  drawGrid();
+
+  // board shadow under the whole assembly
+  const all = new Path2D();
+  for (const p of list) addPoly(all, p.pts.map(toScreen));
+  ctx.save();
+  ctx.shadowColor = "rgba(25, 35, 30, .18)";
+  ctx.shadowBlur = 26;
+  ctx.shadowOffsetY = 12;
+  ctx.fillStyle = "rgba(0,0,0,.001)";
+  ctx.fill(all);
+  ctx.restore();
+
+  const moving = new Set(
+    anim ? (anim.moving || subtreeIndices(anim.k))
+      : selected >= 0
+        ? (options.length ? options[0].moving : subtreeIndices(selected))
+        : [],
+  );
+  const dim = selected >= 0 || !!anim;
+
+  // pieces
+  list.forEach((p, i) => {
+    const scr = p.pts.map(toScreen);
+    ctx.beginPath();
+    addPoly(ctx, scr);
+    ctx.closePath();
+    const isMoving = moving.has(i);
+    ctx.globalAlpha = dim && !isMoving ? 0.5 : 1;
+    ctx.fillStyle = PIECE_COLORS[i % PIECE_COLORS.length];
+    ctx.fill();
+    // cut lines
+    ctx.lineWidth = 2.4;
+    ctx.strokeStyle = THEME.bg;
+    ctx.stroke();
+    ctx.lineWidth = 0.6;
+    ctx.strokeStyle = "rgba(0,0,0,.10)";
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  });
+
+  // Every physical hinge is always visible, so the tree is legible before a
+  // piece is picked. These are the actual joints between a piece and its
+  // parent; the root piece has none.
+  for (let k = 0; k < list.length; k++) {
+    const hp = pivotFor(k, list);
+    if (!hp) continue;
+    const s = toScreen(hp);
+    ctx.beginPath();
+    ctx.arc(s[0], s[1], 4.2, 0, TAU);
+    ctx.fillStyle = THEME.accent;
+    ctx.globalAlpha = 0.62;
+    ctx.fill();
+    ctx.globalAlpha = 0.95;
+    ctx.lineWidth = 1.3;
+    ctx.strokeStyle = THEME.bg;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // selected group outline + hinge
+  if (selected >= 0 && !anim) {
+    const group = options.length ? options[0].moving : subtreeIndices(selected);
+    const pulse = hint ? 0.5 + 0.5 * Math.sin(now / 180) : 1;
+    ctx.save();
+    ctx.strokeStyle = THEME.accent;
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.9;
+    ctx.shadowColor = THEME.accent;
+    ctx.shadowBlur = 14 * pulse;
+    for (const i of group) {
+      ctx.beginPath();
+      addPoly(ctx, list[i].pts.map(toScreen));
+      ctx.closePath();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // hint ring
+  if (hint && hint.k >= 0 && !anim) {
+    const hopt = options.find(o => o.k === hint.k && o.dir === hint.dir);
+    const hgroup = hopt && hopt.moving ? hopt.moving : subtreeIndices(hint.k);
+    const cx = toScreen(centroid(hgroup.flatMap(i => pieces[i].pts)));
+    const r = 26 + 6 * Math.sin(now / 170);
+    ctx.beginPath();
+    ctx.arc(cx[0], cx[1], r, 0, TAU);
+    ctx.strokeStyle = THEME.accent;
+    ctx.globalAlpha = 0.75;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // direction handles
+  if (selected >= 0 && !anim && !solved) {
+    layoutOptions();
+    drawOptions();
+  }
+}
+
+function addPoly(path, pts) {
+  if (!pts.length) return;
+  path.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) path.lineTo(pts[i][0], pts[i][1]);
+}
+// Theme colours are read once (and on theme changes) instead of every frame.
+const THEME = { accent: "#1f6f5c", accentInk: "#ffffff", bg: "#f6f1e8", ink: "#1c2421" };
+function refreshTheme() {
+  const cs = getComputedStyle(document.documentElement);
+  const read = (name, fallback) => cs.getPropertyValue(name).trim() || fallback;
+  THEME.accent = read("--accent", "#1f6f5c");
+  THEME.accentInk = read("--accent-ink", "#ffffff");
+  THEME.bg = read("--bg", "#f6f1e8");
+  THEME.ink = read("--ink", "#1c2421");
+}
+
+function drawGrid() {
+  const spacing = 46;
+  const tl = toWorld([0, 0]), br = toWorld([view.w, view.h]);
+  const x0 = Math.min(tl[0], br[0]), x1 = Math.max(tl[0], br[0]);
+  const y0 = Math.min(tl[1], br[1]), y1 = Math.max(tl[1], br[1]);
+  const c = THEME.ink;
+  ctx.save();
+  ctx.globalAlpha = 0.055;
+  ctx.fillStyle = c;
+  let count = 0;
+  for (let x = Math.ceil(x0 / spacing) * spacing; x <= x1 && count < 2500; x += spacing) {
+    for (let y = Math.ceil(y0 / spacing) * spacing; y <= y1 && count < 2500; y += spacing) {
+      const s = toScreen([x, y]);
+      ctx.beginPath();
+      ctx.arc(s[0], s[1], 1.15, 0, TAU);
+      ctx.fill();
+      count++;
+    }
+  }
+  ctx.restore();
+}
+
+/* ------------------------ option handles ------------------------ */
+function layoutOptions() {
+  const accent = THEME.accent;
+  const vr = {
+    x0: view.padX + 8, y0: view.padTop - 2,
+    x1: view.w - view.padX - 8, y1: view.h - view.padBottom + 2,
+  };
+  const baseR = clamp(Math.min(view.w, view.h) * 0.085, 60, 98);
+  optionViews = [];
+  for (const opt of options) {
+    const group = opt.moving || subtreeIndices(opt.k);
+    const visDelta = opt.visDelta != null ? opt.visDelta : opt.delta;
+    const pivotS = toScreen(opt.pivot);
+    const gc = centroid(group.flatMap(i => pieces[i].pts));
+    const gcS = toScreen(gc);
+    const startA = Math.atan2(gcS[1] - pivotS[1], gcS[0] - pivotS[0]);
+    const endA = startA - visDelta;
+    const midA = startA - visDelta / 2;
+    // Keep the badge inside the play area.
+    let R = baseR;
+    const cs = Math.cos(midA), sn = Math.sin(midA);
+    if (cs > 1e-3) R = Math.min(R, (vr.x1 - 30 - pivotS[0]) / cs);
+    if (cs < -1e-3) R = Math.min(R, (vr.x0 + 30 - pivotS[0]) / cs);
+    if (sn > 1e-3) R = Math.min(R, (vr.y1 - 30 - pivotS[1]) / sn);
+    if (sn < -1e-3) R = Math.min(R, (vr.y0 + 30 - pivotS[1]) / sn);
+    R = clamp(R, 42, baseR);
+    const mid = [pivotS[0] + Math.cos(midA) * R, pivotS[1] + Math.sin(midA) * R];
+    const end = [pivotS[0] + Math.cos(endA) * R, pivotS[1] + Math.sin(endA) * R];
+    optionViews.push({ opt, pivotS, R, startA, endA, midA, mid, end, accent, hover: false, visDelta, moving: group });
+  }
+  // nudge apart badges that land on top of each other
+  for (let i = 0; i < optionViews.length; i++) {
+    for (let j = 0; j < i; j++) {
+      const a = optionViews[i], b = optionViews[j];
+      if (dist(a.mid, b.mid) < 44) {
+        const next = clamp(a.R + 34, 42, baseR + 40);
+        a.mid = [a.pivotS[0] + Math.cos(a.midA) * next, a.pivotS[1] + Math.sin(a.midA) * next];
+        a.end = [a.pivotS[0] + Math.cos(a.endA) * next, a.pivotS[1] + Math.sin(a.endA) * next];
+        a.R = next;
+      }
+    }
+  }
+}
+
+function drawOptions() {
+  for (const v of optionViews) {
+    const accent = v.accent;
+    const active = hoverOption >= 0 && optionViews[hoverOption] === v;
+    // full swept arc — shows exactly how far the piece will travel
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(v.pivotS[0], v.pivotS[1], v.R, v.startA, v.endA, v.visDelta > 0);
+    ctx.strokeStyle = accent;
+    ctx.globalAlpha = active ? 0.32 : 0.16;
+    ctx.lineWidth = 16;
+    ctx.stroke();
+    ctx.globalAlpha = active ? 0.95 : 0.62;
+    ctx.lineWidth = 2.6;
+    ctx.setLineDash([2, 7]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // hinge dot
+    ctx.beginPath();
+    ctx.arc(v.pivotS[0], v.pivotS[1], 5.5, 0, TAU);
+    ctx.fillStyle = accent;
+    ctx.globalAlpha = 0.85;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // arrowhead where the swing lands
+    const tangent = v.endA + (v.visDelta > 0 ? -PI / 2 : PI / 2);
+    const tip = [v.end[0] + Math.cos(tangent) * 14, v.end[1] + Math.sin(tangent) * 14];
+    const back = [v.end[0] - Math.cos(tangent) * 4, v.end[1] - Math.sin(tangent) * 4];
+    const nx = Math.cos(tangent + PI / 2), ny = Math.sin(tangent + PI / 2);
+    ctx.beginPath();
+    ctx.moveTo(tip[0], tip[1]);
+    ctx.lineTo(back[0] + nx * 7, back[1] + ny * 7);
+    ctx.lineTo(back[0] - nx * 7, back[1] - ny * 7);
+    ctx.closePath();
+    ctx.fillStyle = accent;
+    ctx.globalAlpha = active ? 1 : 0.8;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // badge button at the middle of the sweep
+    const r = active ? 27 : 24;
+    ctx.save();
+    ctx.shadowColor = "rgba(20,30,25,.28)";
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 5;
+    ctx.beginPath();
+    ctx.arc(v.mid[0], v.mid[1], r, 0, TAU);
+    ctx.fillStyle = accent;
+    ctx.fill();
+    ctx.restore();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = THEME.bg;
+    ctx.globalAlpha = 0.45;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // curved-arrow glyph (mirrored for each direction)
+    const ink = THEME.accentInk;
+    ctx.save();
+    ctx.translate(v.mid[0], v.mid[1]);
+    ctx.scale(v.opt.delta > 0 ? 1 : -1, 1);
+    ctx.strokeStyle = ink;
+    ctx.fillStyle = ink;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(0, 0, 9.5, -0.75, 1.95);
+    ctx.stroke();
+    const ax = Math.cos(1.95) * 9.5, ay = Math.sin(1.95) * 9.5;
+    const tx = -Math.sin(1.95), ty = Math.cos(1.95);
+    ctx.beginPath();
+    ctx.moveTo(ax + tx * 5, ay + ty * 5);
+    ctx.lineTo(ax - tx * 1 + (-ty) * 4.4, ay - ty * 1 + tx * 4.4);
+    ctx.lineTo(ax - tx * 1 - (-ty) * 4.4, ay - ty * 1 - tx * 4.4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // hint: ring the exact arrow the solver recommends
+    if (hint && hint.k === v.opt.k && hint.dir === v.opt.dir) {
+      const pr = 30 + 4 * Math.sin(now / 150);
+      ctx.beginPath();
+      ctx.arc(v.mid[0], v.mid[1], pr, 0, TAU);
+      ctx.strokeStyle = THEME.accent;
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+/* --------------------------- interaction ------------------------ */
+function hitOption(x, y) {
+  // Badges win over arcs: when two arcs cross, a badge can sit inside the
+  // other option's swept sector, and tapping it must still pick that badge.
+  for (let i = 0; i < optionViews.length; i++) {
+    const v = optionViews[i];
+    if (dist([x, y], v.mid) <= 30) return i;
+    if (dist([x, y], v.end) <= 22) return i;
+  }
+  for (let i = 0; i < optionViews.length; i++) {
+    const v = optionViews[i];
+    const d = dist([x, y], v.pivotS);
+    if (d > 34 && Math.abs(d - v.R) <= 15) {
+      // within the swept sector?
+      let a = Math.atan2(y - v.pivotS[1], x - v.pivotS[0]);
+      let travelled = v.startA - a;
+      while (travelled < 0) travelled += TAU;
+      if (travelled <= Math.abs(v.visDelta)) return i;
+    }
+  }
+  return -1;
+}
+function hitPiece(x, y) {
+  const w = toWorld([x, y]);
+  for (let i = pieces.length - 1; i >= 0; i--) {
+    if (pointInPoly(w, pieces[i].pts)) return i;
+  }
+  let best = -1, bd = 14 / cam.zoom;
+  for (let i = 0; i < pieces.length; i++) {
+    const d = distToPoly(w, pieces[i].pts);
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+
+function onTap(x, y) {
+  if (replay) { skipReplay(); return; }
+  if (hintSearch) cancelHintSearch();
+  if (solved) return;
+  if (anim) return;
+  const oi = hitOption(x, y);
+  if (oi >= 0) { execute(options[oi]); return; }
+  const pi = hitPiece(x, y);
+  if (pi >= 0) {
+    if (pi === selected) { selected = -1; options = []; optionViews = []; requestDraw(); return; }
+    selected = pi;
+    options = optionsForTap(pi);
+    optionViews = [];
+    hint = null;
+    if (!options.length) {
+      toast("No swing can carry that piece from here.");
+    } else {
+      hideTip();
+    }
+    requestDraw();
+    return;
+  }
+  if (selected >= 0) { selected = -1; options = []; optionViews = []; requestDraw(); }
+}
+
+function recordSolutionStep(opt) {
+  const step = level.solution[solutionIdx];
+  const matches = pathValid && step && step.k === opt.k &&
+    Math.sign(step.delta) === Math.sign(opt.delta) &&
+    Math.abs(Math.abs(step.delta) - Math.abs(opt.delta)) < 0.2;
+  if (matches) solutionIdx++;
+  else pathValid = false;
+}
+function execute(opt) {
+  if (anim || solved || !opt) return;
+  if (hintSearch) cancelHintSearch();
+  history.push({
+    pieces: clonePieces(pieces), moves, solutionIdx, pathValid,
+    selected, options: options.map(o => ({ ...o })),
+  });
+  recordSolutionStep(opt);
+  moveLog.push({ k: opt.k, delta: opt.delta });
+
+  selected = -1; options = []; optionViews = []; hint = null;
+  const vis = opt.moving && opt.visDelta != null
+    ? { moving: opt.moving, delta: opt.visDelta }
+    : visualFor(opt.k, opt.delta);
+  const dur = REDUCED_MOTION ? 300 : clamp(340 + Math.abs(vis.delta) * 210, 420, 900);
+  anim = {
+    base: clonePieces(pieces), k: opt.k, pivot: opt.pivot,
+    delta: vis.delta, moving: vis.moving,
+    t0: performance.now(), dur,
+  };
+  frameSwing();
+  hideTip();
+  updateHUD();
+  requestDraw();
+}
+
+function finishSwing() {
+  const a = anim;
+  anim = null;
+  pieces = rotateSet(a.base, a.moving || subtreeIndices(a.k), a.delta, a.pivot);
+  moves++;
+  updateHUD();
+  if (a.replayStep) {
+    if (replay) replay.i = a.stepIndex + 1;
+    requestDraw();
+    setTimeout(() => { if (replay) playReplayStep(); }, 170);
+    return;
+  }
+  hideTip();
+  if (isSolved()) {
+    solved = true;
+    saveBest();
+    frameSolved();
+    scheduleWin(620);
+  } else {
+    setTimeout(() => {
+      if (!solved) { fitAll(); requestDraw(); }
+    }, 230);
+  }
+  requestDraw();
+}
+
+/* ------------------- union outline + shape match ----------------- */
+// The boundary of the union of the pieces: an edge shared with another piece
+// is interior, everything else chains into the outline. Works for concave
+// targets (star, cross) where a convex hull would not.
+function outlineRing(list) {
+  const polys = list.map(p => {
+    const pts = p.pts.map(q => [q[0], q[1]]);
+    let a = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const q = pts[i], r = pts[(i + 1) % pts.length];
+      a += q[0] * r[1] - r[0] * q[1];
+    }
+    return a < 0 ? pts.reverse() : pts;
+  });
+  const edges = [];
+  for (let pi = 0; pi < polys.length; pi++) {
+    const pts = polys[pi];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (L < 1e-6) continue;
+      const abx = b[0] - a[0], aby = b[1] - a[1];
+      const segs = [];
+      for (let pj = 0; pj < polys.length; pj++) {
+        if (pj === pi) continue;
+        const q = polys[pj];
+        for (let j = 0; j < q.length; j++) {
+          const c = q[j], d = q[(j + 1) % q.length];
+          const d1 = Math.abs((c[0] - a[0]) * aby - (c[1] - a[1]) * abx) / L;
+          const d2 = Math.abs((d[0] - a[0]) * aby - (d[1] - a[1]) * abx) / L;
+          if (d1 > 0.6 || d2 > 0.6) continue;
+          const t1 = ((c[0] - a[0]) * abx + (c[1] - a[1]) * aby) / (L * L);
+          const t2 = ((d[0] - a[0]) * abx + (d[1] - a[1]) * aby) / (L * L);
+          const lo = Math.max(0, Math.min(t1, t2));
+          const hi = Math.min(1, Math.max(t1, t2));
+          if (hi - lo > 1e-4) segs.push([lo, hi]);
+        }
+      }
+      segs.sort((x, y) => x[0] - y[0]);
+      let covered = 0, cur = 0, end = 0;
+      for (const s of segs) {
+        if (s[0] > end) { covered += end - cur; cur = s[0]; end = s[1]; }
+        else end = Math.max(end, s[1]);
+      }
+      covered += end - cur;
+      if (covered < 0.9) edges.push([a, b]);
+    }
+  }
+  if (edges.length < 3) return null;
+  const used = new Array(edges.length).fill(false);
+  const ring = [];
+  let cur = 0;
+  for (let guard = 0; guard < edges.length + 2; guard++) {
+    if (used[cur]) return null;
+    used[cur] = true;
+    ring.push(edges[cur][0]);
+    const end = edges[cur][1];
+    let next = -1;
+    for (let i = 0; i < edges.length; i++) {
+      if (!used[i] && dist(edges[i][0], end) < 0.6) { next = i; break; }
+    }
+    if (next < 0)
+      return (ring.length === edges.length && dist(end, ring[0]) < 0.6)
+        ? cleanRing(ring) : null;
+    cur = next;
+  }
+  return null;
+}
+function cleanRing(ring) {
+  const pts = ring.slice();
+  let changed = true;
+  while (changed && pts.length > 3) {
+    changed = false;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[(i - 1 + pts.length) % pts.length], b = pts[i], c = pts[(i + 1) % pts.length];
+      const e1x = b[0] - a[0], e1y = b[1] - a[1], e2x = c[0] - b[0], e2y = c[1] - b[1];
+      const L = Math.hypot(e2x, e2y);
+      const perp = L > 1e-9 ? Math.abs(e1x * e2y - e1y * e2x) / L : 0;
+      if (perp < 0.6) { pts.splice(i, 1); changed = true; break; }
+    }
+  }
+  return pts;
+}
+// Same polygon up to rigid motion: compare the cyclic sequence of edge lengths
+// and turn angles, both orientations.
+function sameRing(A, B) {
+  if (!A || !B || A.length !== B.length) return false;
+  const n = A.length;
+  const sig = R => {
+    const e = [], ang = [];
+    for (let i = 0; i < n; i++)
+      e.push(Math.hypot(R[(i + 1) % n][0] - R[i][0], R[(i + 1) % n][1] - R[i][1]));
+    for (let i = 0; i < n; i++) {
+      const p = R[(i - 1 + n) % n], q = R[i], r = R[(i + 1) % n];
+      const ax = q[0] - p[0], ay = q[1] - p[1], bx = r[0] - q[0], by = r[1] - q[1];
+      ang.push(Math.abs(Math.atan2(ax * by - ay * bx, ax * bx + ay * by)));
+    }
+    return { e, ang };
+  };
+  const sa = sig(A), sb = sig(B);
+  const tolE = 1.2, tolA = 0.035;
+  for (let dir = 0; dir < 2; dir++) {
+    const be = dir ? sb.e.slice().reverse() : sb.e;
+    const ba = dir ? sb.ang.slice().reverse() : sb.ang;
+    for (let off = 0; off < n; off++) {
+      let ok = true;
+      for (let i = 0; i < n; i++) {
+        if (Math.abs(sa.e[i] - be[(i + off) % n]) > tolE) { ok = false; break; }
+        if (Math.abs(sa.ang[i] - ba[(i + off) % n]) > tolA) { ok = false; break; }
+      }
+      if (ok) return true;
+    }
+  }
+  return false;
+}
+function isSolved() {
+  // Overlapping pieces are never a solution, even on a level that lets a
+  // specific pair pass over each other while swinging.
+  for (let i = 0; i < pieces.length; i++) {
+    for (let j = i + 1; j < pieces.length; j++) {
+      if (polysOverlap(pieces[i].pts, pieces[j].pts)) return false;
+    }
+  }
+  // Convex targets (triangles/squares/pentagons/hexagons) are tested by hull:
+  // equal-area non-overlapping pieces whose hull is the regular target must
+  // tile it exactly. Concave targets (the Greek cross) need the real outline.
+  if (isConvexPoly(level.target)) {
+    const hull = simplifyHull(convexHull(pieces.flatMap(p => p.pts)), 1.4);
+    const n = level.target.length;
+    if (hull.length !== n) return false;
+    const sides = hull.map((p, i) => dist(p, hull[(i + 1) % n]));
+    const avg = sides.reduce((a, b) => a + b, 0) / n;
+    if (sides.some(s => Math.abs(s - avg) > avg * 0.025)) return false;
+    const area = Math.abs(polyArea(hull));
+    return Math.abs(area - AREA) < AREA * 0.012;
+  }
+  return sameRing(outlineRing(pieces), level.target);
+}
+
+function undo() {
+  if (anim || replay || !history.length) return;
+  if (hintSearch) cancelHintSearch();
+  const h = history.pop();
+  moveLog.pop();
+  pieces = h.pieces;
+  moves = h.moves;
+  solutionIdx = h.solutionIdx;
+  pathValid = h.pathValid;
+  selected = -1; options = []; optionViews = []; hint = null; solved = false;
+  hideOverlay();
+  fitAll();
+  updateHUD();
+  requestDraw();
+}
+function reset() {
+  replay = null; anim = null;
+  loadLevel(pairIndex, direction, true, "keep");
+  toast("Level restarted");
+}
+
+/* ---------------------- replay the player's path ---------------- */
+function replaySolution() {
+  if (replay || hintBusy) return;
+  if (hintSearch) cancelHintSearch();
+  const steps = moveLog.slice();
+  if (!steps.length) { toast("No moves to replay."); return; }
+  hideOverlay();
+  pieces = level.start.map(pts => ({ pts: pts.map(p => [p[0], p[1]]) }));
+  PIECE_CONVEX = pieces.map(p => isConvexPoly(p.pts));
+  tree = { parent: level.tree.parent.slice(), roots: level.tree.roots.slice() };
+  buildSubtrees(tree.parent, pieces.length);
+  history = []; moves = 0; solutionIdx = 0; pathValid = true;
+  selected = -1; options = []; optionViews = []; hint = null;
+  solved = false; anim = null;
+  replay = { steps, i: 0 };
+  fitAll();
+  updateHUD();
+  ui.tip.textContent = "Replaying your " + steps.length +
+    (steps.length === 1 ? " move" : " moves") + " — tap to skip.";
+  ui.tip.classList.remove("gone");
+  clearTimeout(tipTimer);
+  requestDraw();
+  setTimeout(playReplayStep, 520);
+}
+function playReplayStep() {
+  if (!replay) return;
+  if (replay.i >= replay.steps.length) { replay = null; finishReplay(); return; }
+  const step = replay.steps[replay.i];
+  const pivot = pivotFor(step.k);
+  const vis = visualFor(step.k, step.delta);
+  anim = {
+    base: clonePieces(pieces), k: step.k, pivot,
+    delta: vis.delta, moving: vis.moving,
+    t0: performance.now(),
+    dur: REDUCED_MOTION ? 280 : clamp(300 + Math.abs(vis.delta) * 150, 380, 720),
+    replayStep: true,
+    stepIndex: replay.i,
+  };
+  frameSwing();
+  updateHUD();
+  requestDraw();
+}
+function skipReplay() {
+  if (!replay) return;
+  const steps = replay.steps;
+  anim = null;
+  while (replay.i < steps.length) {
+    const step = steps[replay.i++];
+    const pivot = pivotFor(step.k);
+    const vis = visualFor(step.k, step.delta);
+    pieces = rotateSet(pieces, vis.moving, vis.delta, pivot);
+    moves++;
+  }
+  replay = null;
+  finishReplay();
+}
+function finishReplay() {
+  solved = isSolved();
+  hideTip();
+  updateHUD();
+  if (solved) {
+    frameSolved();
+    scheduleWin(520);
+  } else {
+    fitAll();
+    toast("Replay finished");
+  }
+  requestDraw();
+}
+/* ------------------ shortest-path hint solver ------------------- */
+// A compact fingerprint of a pose. Vertices are rigidly attached, so the
+// first edge of every piece (start + angle, quantised) identifies the state.
+function poseKey(list) {
+  let s = "";
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i].pts, a = p[0], b = p[1] || p[0];
+    s += Math.round(a[0] * 2) + "." + Math.round(a[1] * 2) + "." +
+      Math.round(Math.atan2(b[1] - a[1], b[0] - a[0]) * 114.5916) + "|";
+  }
+  return s;
+}
+// Breadth-first search over the game's own moves (a piece swings as far as it
+// can in one direction). The first solved state found is a shortest solution
+// from wherever the player currently is, so the hint works off the authored
+// route too.
+function solveFrom(list, budgetMs = 700, maxNodes = 9000) {
+  const t0 = performance.now();
+  const start = clonePieces(list);
+  const seen = new Set([poseKey(start)]);
+  const queue = [{ p: start, first: null, depth: 0 }];
+  let head = 0, nodes = 0;
+  const saved = pieces;
+  try {
+    while (head < queue.length && nodes < maxNodes && performance.now() - t0 < budgetMs) {
+      const node = queue[head++];
+      pieces = node.p;
+      if (isSolved())
+        return { ok: true, depth: node.depth, first: node.first, nodes, ms: performance.now() - t0 };
+      nodes++;
+      for (let k = 0; k < pieces.length; k++) {
+        for (const opt of optionsFor(k)) {
+          const next = rotateState(pieces, k, opt.delta, opt.pivot);
+          const key = poseKey(next);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          queue.push({ p: next, first: node.first || { k, dir: opt.dir }, depth: node.depth + 1 });
+          if (queue.length > maxNodes * 8) break;
+        }
+      }
+    }
+  } finally {
+    pieces = saved;
+  }
+  return { ok: false, depth: -1, first: null, nodes, ms: performance.now() - t0 };
+}
+function showHint() {
+  if (solved || replay || hintBusy || anim) return;
+  hintBusy = true;
+  ui.hint.disabled = true;
+  toast("Finding the shortest route…");
+  const start = clonePieces(pieces);
+  hintSearch = {
+    seen: new Set([poseKey(start)]),
+    queue: [{ p: start, first: null, depth: 0 }],
+    head: 0,
+    deadline: performance.now() + 3000,
+    maxNodes: 60000,
+  };
+  setTimeout(runHintChunk, 30);
+}
+function cancelHintSearch() {
+  hintSearch = null;
+  hintBusy = false;
+  ui.hint.disabled = solved || !!anim || !!replay;
+}
+function runHintChunk() {
+  const s = hintSearch;
+  if (!s) return;
+  const saved = pieces;
+  try {
+    const chunkEnd = performance.now() + 26;   // keep every chunk short
+    while (s.head < s.queue.length && performance.now() < chunkEnd) {
+      const node = s.queue[s.head++];
+      pieces = node.p;
+      if (isSolved()) {
+        pieces = saved;
+        finishHintSearch({ ok: true, depth: node.depth, first: node.first });
+        return;
+      }
+      for (let k = 0; k < pieces.length; k++) {
+        for (const opt of optionsFor(k)) {
+          const next = rotateState(pieces, k, opt.delta, opt.pivot);
+          const key = poseKey(next);
+          if (s.seen.has(key)) continue;
+          s.seen.add(key);
+          s.queue.push({ p: next, first: node.first || { k, dir: opt.dir }, depth: node.depth + 1 });
+        }
+      }
+    }
+  } finally {
+    pieces = saved;
+  }
+  if (s.head < s.queue.length && performance.now() < s.deadline && s.queue.length <= s.maxNodes) {
+    setTimeout(runHintChunk, 0);
+    return;
+  }
+  finishHintSearch({ ok: false });
+}
+function finishHintSearch(res) {
+  hintSearch = null;
+  hintBusy = false;
+  updateHUD();
+  if (!res.ok || !res.first) {
+    // If the player is still on the authored route, that route is a valid
+    // fallback when the exhaustive search cannot finish in its time budget.
+    if (pathValid && solutionIdx < level.solution.length) {
+      const step = level.solution[solutionIdx];
+      const opts = optionsFor(step.k);
+      const match = opts.some(o => Math.sign(o.delta) === Math.sign(step.delta) &&
+        Math.abs(Math.abs(o.delta) - Math.abs(step.delta)) < 0.2);
+      if (match) {
+        selected = step.k;
+        options = opts;
+        optionViews = [];
+        hint = { k: step.k, dir: Math.sign(step.delta), until: performance.now() + 3400 };
+        const left = level.solution.length - solutionIdx;
+        toast(left + (left === 1 ? " move to go" : " moves to go"));
+        hideTip();
+        requestDraw();
+        return;
+      }
+    }
+    toast("Couldn't find a route from here — try Undo or Restart.");
+    return;
+  }
+  if (selected !== res.first.k) {
+    selected = res.first.k;
+    options = optionsFor(res.first.k);
+    optionViews = [];
+  }
+  hint = { k: res.first.k, dir: res.first.dir, until: performance.now() + 3400 };
+  toast(res.depth + (res.depth === 1 ? " move" : " moves") + " to go");
+  hideTip();
+  requestDraw();
+}
+
+/* ----------------------------- HUD ------------------------------ */
+let toastTimer = 0;
+let tipTimer = 0;
+function toast(msg) {
+  ui.toast.textContent = msg;
+  ui.toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => ui.toast.classList.remove("show"), 1900);
+}
+function showTip() {
+  ui.tip.textContent = "Tap a piece, then tap an arrow to swing it.";
+  ui.tip.classList.remove("gone");
+  clearTimeout(tipTimer);
+  tipTimer = setTimeout(hideTip, 11000);
+}
+function hideTip() {
+  clearTimeout(tipTimer);
+  ui.tip.classList.add("gone");
+  ui.tip.textContent = "Tap a piece, then tap an arrow to swing it.";
+}
+function showWin() {
+  const best = level.random ? 0 : bestFor(level.id);
+  ui.winTitle.textContent = level.to + " formed";
+  ui.winSub.innerHTML = "Solved in <b>" + moves + "</b> swing" + (moves === 1 ? "" : "s") +
+    (level.random ? " · shortest " + level.par : (best ? " · best: " + best : "")) + ".";
+  ui.winNext.textContent = pairIndex < PAIRS.length - 1 ? "Next level →" : "Play level 1";
+  ui.winReplay.textContent = "Replay my " + moves + (moves === 1 ? " move" : " moves");
+  ui.winReplay.disabled = moves === 0;
+  ui.overlay.hidden = false;
+}
+function hideOverlay() { clearTimeout(winTimer); ui.overlay.hidden = true; }
+// Let the player dismiss the finish card and just look at the solved board:
+// click/tap the backdrop outside the card, or press Escape.
+ui.overlay.addEventListener("pointerdown", e => {
+  if (e.target === ui.overlay) hideOverlay();
+});
+let winTimer = 0;
+function scheduleWin(delay) { clearTimeout(winTimer); winTimer = setTimeout(showWin, delay); }
+
+/* --------------------------- theme ------------------------------ */
+const THEME_STORE = "hinge-puzzle-theme-v1";
+function applyTheme(t, persist = true) {
+  document.documentElement.setAttribute("data-theme", t);
+  if (persist) {
+    try { localStorage.setItem(THEME_STORE, t); } catch (e) {}
+  }
+  const dark = t === "dark";
+  ui.theme.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", dark ? "#11161a" : "#f6f1e8");
+  refreshTheme();
+  requestDraw();
+}
+function toggleTheme() {
+  applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
+}
+
+/* ---------------------------- info ------------------------------ */
+function openInfo() {
+  if (hintSearch) cancelHintSearch();
+  ui.infoOverlay.hidden = false;
+}
+function closeInfo() { ui.infoOverlay.hidden = true; }
+function toggleInfo() {
+  if (ui.infoOverlay.hidden) openInfo();
+  else closeInfo();
+}
+function bestFor(id) {
+  try {
+    const all = JSON.parse(localStorage.getItem(BEST_STORE) || "{}");
+    return all[id] || 0;
+  } catch (e) { return 0; }
+}
+function saveBest() {
+  if (level.random) return;
+  try {
+    const all = JSON.parse(localStorage.getItem(BEST_STORE) || "{}");
+    if (!all[level.id] || moves < all[level.id]) all[level.id] = moves;
+    localStorage.setItem(BEST_STORE, JSON.stringify(all));
+  } catch (e) {}
+}
+
+/* ---------------------------- wiring ---------------------------- */
+canvas.addEventListener("pointerdown", e => {
+  if (e.button != null && e.button !== 0) return;
+  canvas._down = { x: e.clientX, y: e.clientY, t: performance.now() };
+});
+canvas.addEventListener("pointerup", e => {
+  const d = canvas._down;
+  canvas._down = null;
+  if (!d) return;
+  if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 14) return;
+  onTap(e.clientX, e.clientY);
+});
+canvas.addEventListener("pointermove", e => {
+  if (e.pointerType === "touch") return;
+  if (anim || solved || selected < 0) { if (hoverOption !== -1) { hoverOption = -1; requestDraw(); } return; }
+  layoutOptions();
+  const oi = hitOption(e.clientX, e.clientY);
+  canvas.style.cursor = oi >= 0 ? "pointer" : (hitPiece(e.clientX, e.clientY) >= 0 ? "pointer" : "default");
+  if (oi !== hoverOption) { hoverOption = oi; requestDraw(); }
+});
+canvas.addEventListener("pointerleave", () => {
+  if (hoverOption !== -1) { hoverOption = -1; requestDraw(); }
+  canvas.style.cursor = "default";
+});
+
+ui.undo.addEventListener("click", undo);
+ui.reset.addEventListener("click", reset);
+ui.hint.addEventListener("click", showHint);
+ui.rotate.addEventListener("click", rotateView);
+ui.info.addEventListener("click", openInfo);
+ui.infoClose.addEventListener("click", closeInfo);
+ui.infoOverlay.addEventListener("pointerdown", e => {
+  if (e.target === ui.infoOverlay) closeInfo();
+});
+ui.theme.addEventListener("click", toggleTheme);
+ui.winReplay.addEventListener("click", replaySolution);
+ui.winRestart.addEventListener("click", () => { hideOverlay(); loadLevel(pairIndex, direction, true, "keep"); });
+ui.winNext.addEventListener("click", () => {
+  hideOverlay();
+  loadLevel(pairIndex < PAIRS.length - 1 ? pairIndex + 1 : 0, direction);
+});
+ui.levelBtn.addEventListener("click", toggleLevelMenu);
+ui.levelCard.addEventListener("click", swapDirection);
+
+function renderLevelMenu() {
+  ui.lmList.innerHTML = "";
+  PAIRS.forEach((pair, i) => {
+    const isRandom = !!pair.randomLevel;
+    const bestA = isRandom ? 0 : bestFor(pair.id + "-a");
+    const bestB = isRandom ? 0 : bestFor(pair.id + "-b");
+    const best = bestA && bestB ? Math.min(bestA, bestB) : (bestA || bestB);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "lm-item" + (i === pairIndex ? " on" : "");
+    btn.dataset.level = String(i);
+    btn.setAttribute("aria-current", i === pairIndex ? "true" : "false");
+    btn.innerHTML =
+      '<span class="lm-num">' + (i + 1) + "</span>" +
+      '<span class="lm-text"><b></b><small></small></span>' +
+      (best ? '<span class="lm-check" aria-hidden="true">✓</span>' : "");
+    btn.querySelector("b").textContent = isRandom
+      ? "Random scramble → Square"
+      : pair.a + " ⇄ " + pair.b;
+    btn.querySelector("small").textContent = isRandom
+      ? pair.randomLevel.length + " hingings · shuffled start"
+      : pair.steps[0].length + " swings" + (best ? " · best " + best : "");
+    btn.addEventListener("click", () => {
+      closeLevelMenu();
+      if (i !== pairIndex) loadLevel(i, direction);
+      else if (isRandom) loadLevel(i, 0, true, "new");
+    });
+    ui.lmList.appendChild(btn);
+  });
+}
+function openLevelMenu() {
+  if (hintSearch) cancelHintSearch();
+  renderLevelMenu();
+  ui.levelMenu.hidden = false;
+  ui.levelBtn.setAttribute("aria-expanded", "true");
+}
+function closeLevelMenu() {
+  ui.levelMenu.hidden = true;
+  ui.levelBtn.setAttribute("aria-expanded", "false");
+}
+function toggleLevelMenu() {
+  if (ui.levelMenu.hidden) openLevelMenu();
+  else closeLevelMenu();
+}
+document.addEventListener("pointerdown", e => {
+  if (ui.levelMenu.hidden) return;
+  if (ui.levelMenu.contains(e.target) || ui.levelBtn.contains(e.target)) return;
+  closeLevelMenu();
+});
+
+function rotateView() {
+  // clockwise on screen: a negative camera rotation turns the world clockwise
+  viewRot = wrapPi(viewRot - PI / 2);
+  fitAll();
+  requestDraw();
+}
+
+window.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    if (!ui.levelMenu.hidden) { closeLevelMenu(); return; }
+    if (!ui.infoOverlay.hidden) { closeInfo(); return; }
+    if (!ui.overlay.hidden) { hideOverlay(); return; }
+    if (replay) { skipReplay(); return; }
+    selected = -1; options = []; optionViews = []; requestDraw();
+  }
+  else if (e.key === "u" || e.key === "U") undo();
+  else if (e.key === "r" || e.key === "R") reset();
+  else if (e.key === "h" || e.key === "H") showHint();
+  else if (e.key === "q" || e.key === "Q") rotateView();
+  else if (e.key === "i" || e.key === "I") toggleInfo();
+  else if (e.key === "d" || e.key === "D") toggleTheme();
+  else if (e.key === "l" || e.key === "L") toggleLevelMenu();
+  else if (e.key === "s" || e.key === "S") swapDirection();
+});
+window.addEventListener("resize", resize);
+window.addEventListener("orientationchange", () => setTimeout(resize, 120));
+
+/* ---------------------------- boot ------------------------------ */
+resize();
+loadLevel(0);
+applyTheme(document.documentElement.getAttribute("data-theme") || "light", false);
+if (window.matchMedia) {
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  const onTheme = () => {
+    let stored = null;
+    try { stored = localStorage.getItem(THEME_STORE); } catch (e) {}
+    if (!stored) applyTheme(mq.matches ? "dark" : "light", false);
+  };
+  if (mq.addEventListener) mq.addEventListener("change", onTheme);
+  else if (mq.addListener) mq.addListener(onTheme);
+}
+
+// Small hook so the puzzle can be driven by tests / screen readers.
+window.__puzzle = {
+  get state() {
+    return {
+      levelIndex: pairIndex, pairIndex, direction, levelId: level.id, title: level.title,
+      moves, solved, selected,
+      animating: !!anim,
+      animMoving: anim ? (anim.moving || subtreeIndices(anim.k)).slice() : [],
+      animDelta: anim ? anim.delta : 0,
+      hingeIdx: level.hingeIdx.slice(),
+      options: options.map(o => ({ k: o.k, dir: o.dir, angle: o.angle })),
+      history: history.length, solutionIdx, pathValid,
+      cam: { ...cam }, camGoal: { ...camGoal },
+      optionViews: optionViews.map(v => ({ mid: v.mid, end: v.end, R: v.R })),
+    };
+  },
+  pieces: () => clonePieces(pieces),
+  tree: () => ({ parent: tree.parent.slice(), roots: tree.roots.slice() }),
+  toScreen,
+  view: () => ({ ...view }),
+  optionsFor,
+  optionsForTap,
+  execute,
+  solveFrom: (budget, nodes) => solveFrom(pieces, budget, nodes),
+  replaySolution,
+  skipReplay,
+  moveLog: () => moveLog.slice(),
+  replayState: () => replay ? { i: replay.i, total: replay.steps.length, active: true } : { active: false },
+  theme: () => document.documentElement.getAttribute("data-theme"),
+  infoOpen: () => !ui.infoOverlay.hidden,
+  levelCount: () => PAIRS.length,
+  debugLevel(idx, dir = 0, mode = "new") { loadLevel(idx, dir, true, mode); return PAIRS[idx].id; },
+  currentRandom: () => lastRandomRoll ? {
+    hinging: lastRandomRoll.hinging.name,
+    d: lastRandomRoll.entry.d,
+    solution: lastRandomRoll.entry.solution.map(s => ({ k: s.k, delta: s.delta })),
+  } : null,
+  swapDirection,
+  targetRing: () => level.target.map(q => q.slice()),
+  fromRing: () => (SHAPE[level.from] || null),
+  outline: () => outlineRing(pieces),
+  hullAt: tol => simplifyHull(convexHull(pieces.flatMap(p => p.pts)), tol),
+  overlapPairs() {
+    const out = [];
+    for (let i = 0; i < pieces.length; i++)
+      for (let j = i + 1; j < pieces.length; j++)
+        if (polysOverlap(pieces[i].pts, pieces[j].pts)) out.push([i, j]);
+    return out;
+  },
+  polyOverlap: (A, B) => polysOverlap(A, B),
+  solvePathStar(targetList, budgetMs = 15000, maxNodes = 120000) {
+    const tgt = targetList.map(p => centroid(p));
+    const est = list => {
+      let s = 0;
+      for (let i = 0; i < list.length; i++) s += dist(centroid(list[i].pts), tgt[i]);
+      return s;
+    };
+    const start = clonePieces(pieces);
+    const startKey = poseKey(start);
+    const nodes = [{ p: start, g: 0, f: est(start), parent: -1, move: null, key: startKey }];
+    const best = new Map([[startKey, 0]]);
+    const open = [0];
+    const t0 = performance.now();
+    const saved = pieces;
+    let goal = -1;
+    try {
+      while (open.length && nodes.length < maxNodes && performance.now() - t0 < budgetMs) {
+        // pick the best f
+        let bi = 0;
+        for (let i = 1; i < open.length; i++) if (nodes[open[i]].f < nodes[open[bi]].f) bi = i;
+        const idx = open.splice(bi, 1)[0];
+        const node = nodes[idx];
+        pieces = node.p;
+        if (isSolved()) { goal = idx; break; }
+        for (let k = 0; k < pieces.length; k++) {
+          for (const opt of optionsFor(k)) {
+            const next = rotateState(pieces, k, opt.delta, opt.pivot);
+            const key = poseKey(next);
+            const g = node.g + 1;
+            if (best.has(key) && best.get(key) <= g) continue;
+            best.set(key, g);
+            const child = {
+              p: next, g, f: g + est(next) * 0.6,
+              parent: idx, move: { k, delta: opt.delta }, key,
+            };
+            nodes.push(child);
+            open.push(nodes.length - 1);
+          }
+        }
+      }
+    } finally {
+      pieces = saved;
+    }
+    if (goal < 0) return { ok: false, nodes: nodes.length, ms: performance.now() - t0 };
+    const path = [];
+    for (let i = goal; nodes[i].parent >= 0; i = nodes[i].parent) path.push(nodes[i].move);
+    return { ok: true, path: path.reverse(), nodes: nodes.length, ms: performance.now() - t0 };
+  },
+  debugPair(pair, dir = 0) {
+    PAIRS.push(pair);
+    loadLevel(PAIRS.length - 1, dir);
+    return PAIRS.length - 1;
+  },
+  solvePath(budgetMs = 8000, maxNodes = 80000) {
+    const start = clonePieces(pieces);
+    const seen = new Set([poseKey(start)]);
+    const nodes = [{ p: start, parent: -1, move: null }];
+    const t0 = performance.now();
+    const saved = pieces;
+    let goal = -1;
+    try {
+      for (let head = 0; head < nodes.length && head < maxNodes && performance.now() - t0 < budgetMs; head++) {
+        const node = nodes[head];
+        pieces = node.p;
+        if (isSolved()) { goal = head; break; }
+        for (let k = 0; k < pieces.length; k++) {
+          for (const opt of optionsFor(k)) {
+            const next = rotateState(pieces, k, opt.delta, opt.pivot);
+            const key = poseKey(next);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            nodes.push({ p: next, parent: head, move: { k, delta: opt.delta } });
+          }
+        }
+      }
+    } finally {
+      pieces = saved;
+    }
+    if (goal < 0) return { ok: false, nodes: nodes.length, ms: performance.now() - t0 };
+    const path = [];
+    for (let i = goal; nodes[i].parent >= 0; i = nodes[i].parent) path.push(nodes[i].move);
+    return { ok: true, path: path.reverse(), nodes: nodes.length, ms: performance.now() - t0 };
+  },
+  solution: () => level.solution.map(s => ({ k: s.k, delta: s.delta })),
+  debugReach(k) {
+    const pivot = pivotFor(k);
+    if (!pivot) return null;
+    return { pivot, reach: maxReachAt(k, pivot) };
+  },
+  debugState: () => clonePieces(pieces),
+  debugSetState(list) {
+    pieces = clonePieces(list);
+    PIECE_CONVEX = pieces.map(p => isConvexPoly(p.pts));
+    selected = -1; options = []; optionViews = []; anim = null;
+    return true;
+  },
+  debugRotate: (list, k, delta, pivot) => rotateState(list, k, delta, pivot),
+  debugSolved: () => isSolved(),
+  applyInstant(opt) {
+    if (!opt) return false;
+    history.push({ pieces: clonePieces(pieces), moves, solutionIdx, pathValid, selected, options: options.map(o => ({ ...o })) });
+    pieces = rotateState(pieces, opt.k, opt.delta, opt.pivot);
+    moves++;
+    recordSolutionStep(opt);
+    moveLog.push({ k: opt.k, delta: opt.delta });
+    selected = -1; options = []; optionViews = []; anim = null; hint = null;
+    hideTip();
+    solved = isSolved();
+    if (solved) { saveBest(); scheduleWin(620); }
+    updateHUD();
+    fitAll();
+    if (solved) frameSolved();
+    requestDraw();
+    return isSolved();
+  },
+  undo,
+  reset,
+  hint: showHint,
+  hintInfo: () => (hint ? { k: hint.k, dir: hint.dir } : null),
+  viewRot: () => viewRot,
+  loadLevel,
+  isSolved,
+  solveAll() {
+    const steps = level.solution.slice();
+    for (const s of steps) {
+      const opts = optionsFor(s.k);
+      const match = opts.find(o => o.dir === Math.sign(s.delta) &&
+        Math.abs(Math.abs(o.delta) - Math.abs(s.delta)) < 0.2);
+      if (!match) return { ok: false, at: s.k };
+      // apply instantly, bypassing animation
+      history.push({ pieces: clonePieces(pieces), moves, solutionIdx, pathValid, selected, options: options.map(o => ({ ...o })) });
+      pieces = rotateState(pieces, s.k, match.delta, match.pivot);
+      moves++;
+      solutionIdx++;
+      selected = -1; options = []; optionViews = []; anim = null;
+    }
+    updateHUD();
+    requestDraw();
+    return { ok: isSolved(), moves };
+  },
+};
+})();
+</script>
+</body>
+</html>

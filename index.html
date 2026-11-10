@@ -224,6 +224,9 @@
   .win-badge svg { width: 30px; height: 30px; }
   .win-card h2 { margin: 0 0 6px; font-size: 23px; letter-spacing: -.01em; }
   .win-card p { margin: 0 0 20px; color: var(--muted); font-size: 13.5px; line-height: 1.45; }
+  #winSub { margin-bottom: 8px; }
+  .win-note { margin: 0 0 20px; font-size: 13px; color: var(--muted); line-height: 1.45; }
+  .win-note.poor { color: var(--ink); }
   .win-actions { display: flex; gap: 9px; justify-content: center; flex-wrap: wrap; }
   .win-actions .btn { height: 44px; }
 
@@ -429,6 +432,7 @@
     </div>
     <h2 id="winTitle">Pentagon formed</h2>
     <p id="winSub">Solved in 7 swings.</p>
+    <p id="winNote" class="win-note"></p>
     <div class="win-actions">
       <button class="btn primary" id="winNext">Next level</button>
       <button class="btn ghost" id="winReplay">Replay my moves</button>
@@ -1588,6 +1592,7 @@ const ui = {
   overlay: document.getElementById("overlay"),
   winTitle: document.getElementById("winTitle"),
   winSub: document.getElementById("winSub"),
+  winNote: document.getElementById("winNote"),
   winNext: document.getElementById("winNext"),
   winReplay: document.getElementById("winReplay"),
   winRestart: document.getElementById("winRestart"),
@@ -2453,11 +2458,40 @@ function hideTip() {
   ui.tip.classList.add("gone");
   ui.tip.textContent = "Tap a piece, then tap an arrow to swing it.";
 }
+// One gently teasing line per level for a very long solve (4+ over par).
+const WIN_RIFFS = {
+  "tri-square-a": "Four pieces. Four! The square was right there.",
+  "tri-square-b": "Three sides, and you still took the long way round.",
+  "tri-hex-a": "That hexagon has six sides — you found a seventh: the detour.",
+  "tri-hex-b": "The triangle is trying not to be pointy about this.",
+  "sq-hex-a": "Six pieces, and you gave every one a little holiday.",
+  "sq-hex-b": "The square was square. Your route was a rhombus.",
+  "tri-pent-a": "Eight pieces, and you turned a triangle into a pub crawl.",
+  "tri-pent-b": "The triangle waited. And waited. And waited.",
+  "pent-sq-a": "Seven pieces, and the pentagon filed a complaint about the commute.",
+  "pent-sq-b": "Four corners on that square, and you visited each one twice.",
+  "oct-square-a": "Seven pieces, and you took the octagon's scenic route.",
+  "oct-square-b": "Eight sides, and you still found a ninth: the long way.",
+  "square-tri-star-a": "Four pieces to a triangle, and you took the star route.",
+  "square-tri-star-b": "Seven swings? The triangle only has three sides.",
+  "random-square-a": "Six rectangles, and you still went round the block.",
+};
+function winFlavour(id, diff) {
+  if (diff < 0) return { text: "Under par — you found an even shorter route.", poor: false };
+  if (diff === 0) return { text: "Par — exactly the shortest route. Perfect.", poor: false };
+  if (diff === 1) return { text: "One over par — that's a tap-in.", poor: false };
+  if (diff === 2) return { text: "Two over par — close.", poor: false };
+  if (diff === 3) return { text: "Three over par — nearly there.", poor: false };
+  return { text: WIN_RIFFS[id] || "Four or more over par — the long way round.", poor: true };
+}
 function showWin() {
-  const best = level.random ? 0 : bestFor(level.id);
+  const par = level.solution.length;
+  const flavour = winFlavour(level.id, moves - par);
   ui.winTitle.textContent = level.to + " formed";
   ui.winSub.innerHTML = "Solved in <b>" + moves + "</b> swing" + (moves === 1 ? "" : "s") +
-    (level.random ? " · shortest " + level.par : (best ? " · best: " + best : "")) + ".";
+    " · par " + par + ".";
+  ui.winNote.textContent = flavour.text;
+  ui.winNote.classList.toggle("poor", flavour.poor);
   ui.winNext.textContent = pairIndex < PAIRS.length - 1 ? "Next level →" : "Play level 1";
   ui.winReplay.textContent = "Replay my " + moves + (moves === 1 ? " move" : " moves");
   ui.winReplay.disabled = moves === 0;
@@ -2785,6 +2819,7 @@ window.__puzzle = {
     return { ok: true, path: path.reverse(), nodes: nodes.length, ms: performance.now() - t0 };
   },
   solution: () => level.solution.map(s => ({ k: s.k, delta: s.delta })),
+  winFlavour: (diff) => winFlavour(level.id, diff),
   debugReach(k) {
     const pivot = pivotFor(k);
     if (!pivot) return null;
